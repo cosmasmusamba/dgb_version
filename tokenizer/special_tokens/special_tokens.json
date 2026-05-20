@@ -1,0 +1,8 @@
+{
+  "pad":  {"token": "<PAD>",  "id": 0},
+  "unk":  {"token": "<UNK>",  "id": 1},
+  "bos":  {"token": "<BOS>",  "id": 2},
+  "eos":  {"token": "<EOS>",  "id": 3},
+  "mask": {"token": "<MASK>", "id": 4},
+  "sep":  {"token": "<SEP>",  "id": 5}
+}

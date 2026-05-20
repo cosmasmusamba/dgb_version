@@ -1,0 +1,10 @@
+# Install all DGB requirements:
+# pip install -r requirements/base.txt
+# pip install -r requirements/api.txt
+# pip install -r requirements/security.txt
+# pip install -r requirements/training.txt
+# pip install -r requirements/monitoring.txt   # optional
+# pip install -r requirements/dev.txt          # optional
+-r requirements/base.txt
+-r requirements/api.txt
+-r requirements/security.txt
