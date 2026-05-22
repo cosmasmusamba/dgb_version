@@ -5,13 +5,8 @@ High-level generation engine.
 
 Combines beam search and top-p sampling under one interface.
 Loads the model lazily (once) and serves concurrent requests.
-
-Also manages:
-- Model warm-up (forward pass on dummy input to trigger JIT/CUDA compilation)
-- Concurrent request serialisation via asyncio.Lock (single-GPU protection)
-- Per-request timeout
-- Token and character count telemetry
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -60,6 +55,8 @@ class InferenceEngine:
 
     def warmup(self) -> None:
         """Run one dummy forward pass to trigger CUDA kernel compilation."""
+        if not _HAS_TORCH:
+            return
         try:
             dummy = torch.tensor([[2, 3, 1, 0]], dtype=torch.long, device=self._device)
             with torch.no_grad():
@@ -77,10 +74,7 @@ class InferenceEngine:
         use_beam:  bool = False,
         beam_cfg:  Optional[BeamSearchConfig] = None,
     ) -> str:
-        """
-        Generate a complete response for `prompt`.
-        Returns the full decoded output string.
-        """
+        """Generate a complete response for `prompt`."""
         async with self._lock:
             return await asyncio.get_event_loop().run_in_executor(
                 None, self._complete_sync, prompt, cfg, use_beam, beam_cfg
@@ -126,10 +120,7 @@ class InferenceEngine:
         prompt: str,
         cfg:    GenerationConfig,
     ) -> AsyncGenerator[str, None]:
-        """
-        Async generator that yields decoded text tokens one by one.
-        Suitable for SSE and WebSocket streaming endpoints.
-        """
+        """Async generator that yields decoded text tokens one by one."""
         ids = self._tokenizer.encode(prompt, add_special_tokens=True)
         src = torch.tensor([ids], dtype=torch.long, device=self._device)
 
@@ -171,46 +162,78 @@ def init_engine(model, tokenizer, device: "torch.device") -> InferenceEngine:
     logger.info("InferenceEngine initialised on device=%s", device)
     return _engine
 
-def run_inference():
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+def run_inference(prompt: Optional[str] = None):
+    """
+    Entry point for quick inference testing.
+    Dynamically loads latest checkpoint and tokenizer using PathResolver.
+    """
     import torch
-    from pathlib import Path
     from tokenizer.dgb_tokenizer import DGBTokenizer
     from transformer.utils.model_helpers import load_model
     from inference.sampling.top_p_sampler import GenerationConfig
+    from configs.loader import get_config
+    from modules.utils.path_resolver import init_path_resolver
 
-    # Locate latest checkpoint folder
-    ckpt_root = Path("checkpoints/dgb1")
-    models_dir = ckpt_root / "models"
-    tokenizer_dir = ckpt_root / "tokenizer"
-
-    # Pick the most recent model file (by timestamp prefix)
+    print("\n🚀 DGB Inference Engine Starting...\n")
+    
+    # Load config and setup path resolver dynamically
+    cfg = get_config()
+    model_id = cfg.project.model_id
+    path_resolver = init_path_resolver(model_id=model_id, cfg=cfg)
+    
+    # Get directories from path resolver
+    models_dir = path_resolver.models_dir(create=False)
+    tokenizer_dir = path_resolver.tokenizer_dir(create=False)
+    
+    print(f"📁 Models directory: {models_dir}")
+    print(f"📁 Tokenizer directory: {tokenizer_dir}")
+    
+    # Find latest model checkpoint
     model_files = sorted(models_dir.glob("*_best_model.pt"))
     if not model_files:
-        raise FileNotFoundError("No model checkpoint found in checkpoints/dgb1/models/")
+        model_files = sorted(models_dir.glob("*_epoch_*.pt"))
+    if not model_files:
+        raise FileNotFoundError(f"No model checkpoint found in {models_dir}")
     latest_model = model_files[-1]
-
-    # Pick the most recent vocabulary.json file
-    vocab_files = sorted(tokenizer_dir.glob("*_vocabulary.json"))
-    if not vocab_files:
-        raise FileNotFoundError("No vocabulary.json found in tokenizer directory")
-    latest_vocab_file = vocab_files[-1]
-
-    # Initialise tokenizer
-    tokenizer = DGBTokenizer(str(latest_vocab_file))
-
-    # Initialise model
+    print(f"📄 Model file: {latest_model.name}")
+    
+    # Load tokenizer
+    if not tokenizer_dir.exists():
+        raise FileNotFoundError(f"Tokenizer directory not found: {tokenizer_dir}")
+    
+    tokenizer = DGBTokenizer.from_pretrained(tokenizer_dir)
+    print(f"✅ Tokenizer loaded: vocab_size={tokenizer.vocab_size}")
+    
+    # Setup device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = load_model(str(latest_model), device)
-
-    # Initialise engine
+    print(f"✅ Device: {device}")
+    
+    # Load model with vocab_size from tokenizer
+    model = load_model(str(latest_model), device, vocab_size=tokenizer.vocab_size)
+    print(f"✅ Model loaded successfully")
+    
+    # Initialize engine
     engine = init_engine(model, tokenizer, device)
+    
+    # Generate response
+    gen_cfg = GenerationConfig(
+        max_new_tokens=100,
+        temperature=0.7,
+        top_p=0.9,
+        do_sample=True,
+    )
+    test_prompt = prompt or "Explain what artificial intelligence is in simple terms."
+    print(f"\n📝 Prompt: {test_prompt}\n")
+    print("🤖 Generating...\n")
+    
+    output = asyncio.run(engine.complete(test_prompt, gen_cfg))
+    print(f"\n✨ Generated Response:\n{output}\n")
 
-    # Run a sample prompt
-    cfg = GenerationConfig(max_new_tokens=50)
-    output = asyncio.run(engine.complete("Hello world, this is a test prompt.", cfg))
-    print("Generated:", output)
 
 if __name__ == "__main__":
-    # entry point for inference
-    from inference.engine.generator import run_inference
-    run_inference()
+    import sys
+    user_prompt = sys.argv[1] if len(sys.argv) > 1 else None
+    run_inference(user_prompt)

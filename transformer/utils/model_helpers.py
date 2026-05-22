@@ -191,15 +191,66 @@ def latest_checkpoint(directory: Path) -> Optional[Path]:
     epoch_pts  = [p for p in all_pts if "best_model" not in p.name]
     return epoch_pts[-1] if epoch_pts else None
 
-
-def load_model(checkpoint_path: str, device: torch.device) -> DGBTransformer:
+def load_model(checkpoint_path: str, device: torch.device, vocab_size: int = None) -> DGBTransformer:
     """
     Load a trained DGBTransformer model from checkpoint.
+    
+    Args:
+        checkpoint_path: Path to the checkpoint file
+        device: torch device to load to
+        vocab_size: Optional vocab size (if not provided, tries to infer from checkpoint or config)
+    
+    Returns:
+        Loaded model in eval mode
     """
-    model = DGBTransformer()
-    state = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(state)
+    from configs.loader import get_config
+    
+    # Load config for transformer parameters
+    cfg = get_config()
+    transformer_cfg = cfg.transformer
+    
+    # Load checkpoint to inspect
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    
+    # Extract model state dict (handle both wrapped and unwrapped formats)
+    if 'model_state' in checkpoint:
+        model_state = checkpoint['model_state']
+        logger.info(f"Loaded training checkpoint: epoch={checkpoint.get('epoch', 'unknown')}, loss={checkpoint.get('loss', 'unknown'):.6f}")
+    else:
+        model_state = checkpoint
+        logger.info("Loaded raw model checkpoint")
+    
+    # Determine vocab_size
+    if vocab_size is None:
+        # Try to get vocab_size from checkpoint
+        if 'vocab_size' in checkpoint:
+            vocab_size = checkpoint['vocab_size']
+        elif hasattr(transformer_cfg, 'vocab_size'):
+            vocab_size = transformer_cfg.vocab_size
+        else:
+            vocab_size = 8000  # Default fallback
+        logger.info(f"Using vocab_size={vocab_size}")
+    
+    # Create model with all required parameters
+    model = DGBTransformer(
+        vocab_size=vocab_size,
+        d_model=transformer_cfg.d_model,
+        n_heads=transformer_cfg.n_heads,
+        n_encoder_layers=transformer_cfg.n_encoder_layers,
+        n_decoder_layers=transformer_cfg.n_decoder_layers,
+        d_ff=transformer_cfg.d_ff,
+        dropout=transformer_cfg.dropout,
+        max_seq_len=transformer_cfg.max_seq_len,
+        pad_idx=transformer_cfg.pad_idx,
+        tie_embeddings=transformer_cfg.tie_embeddings,
+        layer_norm_eps=transformer_cfg.layer_norm_eps,
+    )
+    
+    # Load state dict
+    model.load_state_dict(model_state)
+    
     model.to(device)
     model.eval()
-    return model
+    logger.info(f"Model loaded from {Path(checkpoint_path).name}")
     
+    return model
