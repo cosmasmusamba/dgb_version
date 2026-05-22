@@ -27,6 +27,7 @@ try:
 except ImportError:
     _HAS_TORCH = False
 
+from transformer.core.transformer_model import DGBTransformer
 
 def resolve_device(preference: str = "auto") -> "torch.device":
     """Resolve the best available compute device."""
@@ -189,3 +190,16 @@ def latest_checkpoint(directory: Path) -> Optional[Path]:
     all_pts    = sorted(list_files(directory, glob="*.pt"))
     epoch_pts  = [p for p in all_pts if "best_model" not in p.name]
     return epoch_pts[-1] if epoch_pts else None
+
+
+def load_model(checkpoint_path: str, device: torch.device) -> DGBTransformer:
+    """
+    Load a trained DGBTransformer model from checkpoint.
+    """
+    model = DGBTransformer()
+    state = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(state)
+    model.to(device)
+    model.eval()
+    return model
+    
