@@ -176,8 +176,6 @@ def run_inference(prompt: Optional[str] = None):
     from inference.sampling.top_p_sampler import GenerationConfig
     from configs.loader import get_config
     from modules.utils.path_resolver import init_path_resolver
-
-    print("\n🚀 DGB Inference Engine Starting...\n")
     
     # Load config and setup path resolver dynamically
     cfg = get_config()
@@ -187,10 +185,7 @@ def run_inference(prompt: Optional[str] = None):
     # Get directories from path resolver
     models_dir = path_resolver.models_dir(create=False)
     tokenizer_dir = path_resolver.tokenizer_dir(create=False)
-    
-    print(f"📁 Models directory: {models_dir}")
-    print(f"📁 Tokenizer directory: {tokenizer_dir}")
-    
+        
     # Find latest model checkpoint
     model_files = sorted(models_dir.glob("*_best_model.pt"))
     if not model_files:
@@ -198,22 +193,18 @@ def run_inference(prompt: Optional[str] = None):
     if not model_files:
         raise FileNotFoundError(f"No model checkpoint found in {models_dir}")
     latest_model = model_files[-1]
-    print(f"📄 Model file: {latest_model.name}")
     
     # Load tokenizer
     if not tokenizer_dir.exists():
         raise FileNotFoundError(f"Tokenizer directory not found: {tokenizer_dir}")
     
     tokenizer = DGBTokenizer.from_pretrained(tokenizer_dir)
-    print(f"✅ Tokenizer loaded: vocab_size={tokenizer.vocab_size}")
     
     # Setup device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"✅ Device: {device}")
     
     # Load model with vocab_size from tokenizer
     model = load_model(str(latest_model), device, vocab_size=tokenizer.vocab_size)
-    print(f"✅ Model loaded successfully")
     
     # Initialize engine
     engine = init_engine(model, tokenizer, device)
@@ -225,7 +216,7 @@ def run_inference(prompt: Optional[str] = None):
         top_p=0.9,
         do_sample=True,
     )
-    test_prompt = prompt or "Explain what artificial intelligence is in simple terms."
+    test_prompt = prompt or "Hi there!"
     print(f"\n📝 Prompt: {test_prompt}\n")
     print("🤖 Generating...\n")
     
