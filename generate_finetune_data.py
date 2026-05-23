@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from configs.loader import get_config
 from modules.utils.path_resolver import init_path_resolver
-from trainer.finetune.data_generator import build_finetune_dataset_from_corpus, FineTuneDatasetBuilder
+from finetune.data_generator import build_finetune_dataset_from_corpus, FineTuneDatasetBuilder
 
 
 def main():

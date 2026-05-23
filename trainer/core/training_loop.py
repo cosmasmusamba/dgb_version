@@ -140,12 +140,22 @@ def split_cleaned_files(
 ) -> Tuple[List[Path], List[Path]]:
     """
     Split cleaned text files into train/val sets.
-    Returns (train_files, val_files).
-    With only 1 file returns (all_files, []) with a warning.
+
+    Files are sorted with natural sort first (wk_2 < wk_10 < wk_100)
+    so the split is deterministic and numerically ordered.
+    Returns (train_files, val_files). With only 1 file returns
+    (all_files, []) with a warning.
     """
+    import re
+
+    def _nat(p: Path):
+        return [int(x) if x.isdigit() else x.lower()
+                for x in re.split(r"(\d+)", p.name)]
+
     from modules.utils.file_handler import list_files
     rng   = random.Random(seed)
-    files = sorted(list_files(cleaned_dir, glob="*.txt"))
+    # Natural sort before shuffle so identical seeds always produce same split
+    files = sorted(list_files(cleaned_dir, glob="*.txt"), key=_nat)
     if not files:
         raise FileNotFoundError(f"No cleaned .txt files in {cleaned_dir}")
     if len(files) < 2:

@@ -56,3 +56,45 @@ See docs/architecture.md for full module index and data flow.
 - B4: learning_rate read from config (was hardcoded 1e-3)
 - T4: seed 42 applied to torch/random/numpy
 - T6: num_workers=0 until multi-file corpus
+
+---
+
+## Data pipeline
+
+The DGB data pipeline ingests and preprocesses large-scale text corpora from multiple sources simultaneously.
+
+```bash
+# See all available options
+python main_data_pipeline.py --help
+
+# Dry run (validate config, list sources)
+python main_data_pipeline.py --dry-run
+
+# Run the pipeline (processes enabled sources from runtime_config.json)
+python main_data_pipeline.py
+
+# Export processed data to training format
+python main_data_pipeline.py --export --format plain_text
+```
+
+See `docs/data_pipeline.md` for full documentation.
+
+### Supported sources
+| Source | Status | Domain |
+|---|---|---|
+| Wikipedia (local wk_*.txt) | Enabled by default | Encyclopedic |
+| Wikipedia (online dumps) | Config: dump_urls | Encyclopedic |
+| StackExchange | Config: enabled:true | Q&A |
+| arXiv | Config: enabled:true | Academic |
+| Project Gutenberg | Config: enabled:true | Books |
+| Common Crawl | Config: enabled:true | Web |
+| GitHub | Config: enabled:true | Code |
+
+### Pipeline stages
+1. Text normalisation (Unicode, whitespace, HTML)
+2. Language detection and filtering (fasttext)
+3. Toxicity and unsafe-content filtering
+4. Quality scoring (12 heuristic signals)
+5. Exact + near-duplicate deduplication (SHA-256 + SimHash)
+6. Metadata enrichment (topics, readability, structure)
+7. Shard writing (512 MB max, atomic rotation, SHA-256 verified)

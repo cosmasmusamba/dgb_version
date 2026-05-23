@@ -21,11 +21,15 @@ class TokenizerTrainer:
         t_cfg  = cfg.tokenizer
 
         pre_tok = PreTokenizer(lowercase=False, add_eow=True)
+        # list_files already uses natural sort (wk_0,1,2..10,11..)
         files   = list_files(Path(cleaned_dir), "*.txt")
         if not files:
             raise FileNotFoundError(f"No cleaned files in {cleaned_dir}")
 
-        logger.info("TokenizerTrainer: reading %d files", len(files))
+        logger.info(
+            "TokenizerTrainer: %d files  order: %s … %s",
+            len(files), files[0].name, files[-1].name,
+        )
         word_freq: Counter = Counter()
         for fpath in files:
             with fpath.open("r", encoding="utf-8", errors="replace") as fh:

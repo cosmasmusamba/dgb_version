@@ -10,11 +10,11 @@ Uses fasttext's lid.176.bin model (loaded lazily) with fallbacks:
 Features
 --------
 - Per-source language overrides (e.g. arXiv may allow any language)
-- Configurable target languages (default: African + Heavy Ugandan Priority)
-- Confidence threshold (default: 0.65 for low-resource languages)
+- Configurable target languages (default: ["en"])
+- Confidence threshold (default: 0.80)
 - Script-based pre-filter (Latin, CJK, Cyrillic, etc.)
 - Passes documents through when detection is uncertain (configurable)
-- Language code normalisation (ISO 639-1 & ISO 639-3 regional overrides)
+- Language code normalisation (ISO 639-1)
 """
 from __future__ import annotations
 
@@ -29,58 +29,16 @@ from data_pipeline.core.document import Document, ProcessingStage
 
 logger = logging.getLogger(__name__)
 
-# Default target languages focusing heavily on Uganda and major African lingua francas.
-# Supports mixed ISO 639-1 (2-letter) and ISO 639-3 (3-letter) for regional Ugandan languages.
-_DEFAULT_TARGETS: Set[str] = {
-    # ─── CORE UGANDAN STANDARD TARGETS (ISO 639-1) ───
-    "en",  # English (Official language of Uganda)
-    "lg",  # Luganda / Ganda (Widespread Central Ugandan language)
-    "sw",  # Swahili / Kiswahili (Official language of Uganda)
+# Default target languages
+_DEFAULT_TARGETS: Set[str] = {"en"}
+_DEFAULT_CONFIDENCE: float = 0.80
 
-    # ─── ADDED REGIONAL UGANDAN TARGETS (ISO 639-3) ───
-    "xog",  # Soga (Lusoga)
-    "nyn",  # Nyankole (Runyankore)
-    "nyu",  # Runyankole alternate mapping
-    "ttj",  # Tooro (Rutooro)
-    "njo",  # Tooro / Rutooro alternate mapping
-    "cgg",  # Chiga (Rukiga)
-    "ach",  # Acoli (Acholi)
-    "lgg",  # Lugbara
-    "gwr",  # Gwere (Lugwere)
-    "myx",  # Masaaba / Gishu (Bantu language from Eastern Uganda/Mount Elgon)
-    "teo",  # Ateso / Teso (Eastern Nilotic language spoken in Eastern Uganda & Western Kenya)
-    "mas",  # Maasai / Masai (Eastern Nilotic language across Kenya & Tanzania)
-
-    # ─── MAJOR PAN-AFRICAN LINGUA FRANCAS ───
-    "rw",  # Kinyarwanda (Bordering southwest Uganda)
-    "om",  # Oromo (East Africa)
-    "so",  # Somali (East Africa)
-    "am",  # Amharic (East Africa)
-    "ar",  # Arabic (North & East Africa)
-    "fr",  # French (West & Central Africa)
-    "pt",  # Portuguese (Southern / Central Africa)
-    "ha",  # Hausa (West Africa)
-    "yo",  # Yoruba (West Africa)
-    "ig",  # Igbo (West Africa)
-    "sn",  # Shona (Southern Africa)
-    "zu",  # Zulu (Southern Africa)
-    "xh",  # Xhosa (Southern Africa)
-    "wo",  # Wolof (West Africa)
-}
-
-_DEFAULT_CONFIDENCE: float = 0.65  # Retained lower threshold for low-resource language accuracy
-
-# Lang code normalisations (fasttext labels / variants → pipeline targets)
+# Lang code normalisations (fasttext → ISO 639-1)
 _NORMALISE = {
     "zh": "zh", "zh-hans": "zh", "zh-hant": "zh",
     "pt-br": "pt", "pt-pt": "pt",
     "sr-cyrl": "sr", "sr-latn": "sr",
     "bs": "bs", "hr": "hr",
-    
-    # Normalise common regional macro-language code splits back to targets
-    "nyu": "nyn",
-    "njo": "ttj",
-    "tojo": "ttj"
 }
 
 
@@ -90,7 +48,7 @@ class LanguageDetector:
 
     Parameters
     ----------
-    target_languages:     Set of ISO 639-1 or ISO 639-3 codes to accept.
+    target_languages:     Set of ISO 639-1 codes to accept.
     min_confidence:       Minimum fasttext confidence to trust detection.
     pass_on_uncertainty:  If True, pass through documents when confidence < threshold.
     model_path:           Path to lid.176.bin (downloaded separately).
@@ -123,13 +81,9 @@ class LanguageDetector:
         for src, langs in lc.get("source_overrides", {}).items():
             overrides[src] = set(langs) if langs != ["*"] else {"*"}
         model_path = lc.get("fasttext_model_path")
-        
-        target_langs = lc.get("target_languages")
-        target_set = set(target_langs) if target_langs else _DEFAULT_TARGETS
-        
         return cls(
-            target_languages=target_set,
-            min_confidence=lc.get("min_confidence", _DEFAULT_CONFIDENCE),
+            target_languages=set(lc.get("target_languages", ["en"])),
+            min_confidence=lc.get("min_confidence", 0.80),
             pass_on_uncertainty=lc.get("pass_on_uncertainty", False),
             model_path=Path(model_path) if model_path else None,
             source_overrides=overrides,
@@ -140,6 +94,7 @@ class LanguageDetector:
         Detect language and filter.
         Returns None (rejected) if language not in targets.
         """
+        # Check source override
         allowed = self._source_allowed_langs(doc.source_name)
         if "*" in allowed:
             doc.stage = ProcessingStage.FILTERED
@@ -189,6 +144,7 @@ class LanguageDetector:
             except Exception as exc:
                 logger.debug("fasttext predict error: %s", exc)
 
+        # Fallback: character n-gram heuristic
         return self._heuristic_detect(text)
 
     def _load_model(self):
@@ -211,21 +167,25 @@ class LanguageDetector:
 
     def _heuristic_detect(self, text: str) -> Tuple[str, float]:
         """
-        Character-script heuristic adapted for African & Ugandan pipelines.
+        Character-script heuristic — sufficient for English/non-English split.
+        Returns ("en", confidence) or ("xx", confidence).
         """
         sample   = text[:300]
         total    = max(len(sample), 1)
         latin    = sum(1 for c in sample if "LATIN" in unicodedata.name(c, ""))
+        cjk      = sum(1 for c in sample if "\u4e00" <= c <= "\u9fff")
+        cyrillic = sum(1 for c in sample if "\u0400" <= c <= "\u04ff")
         arabic   = sum(1 for c in sample if "\u0600" <= c <= "\u06ff")
-        ethiopic = sum(1 for c in sample if "\u1200" <= c <= "\u137f")
 
-        # Except for Lugbara (which occasionally defaults to distinct Latin notation variations), 
-        # Lusoga, Runyankore, Rutooro, Rukiga, Acholi, and Lugwere all utilize standard Latin script.
-        # We target a low confidence pass score to allow pipeline filters to intercept text.
         if latin / total > 0.60:
-            return "en", 0.51    
+            return "en", 0.70    # conservative — can't distinguish Romance/Germanic
+        if cjk / total > 0.20:
+            return "zh", 0.80
+        if cyrillic / total > 0.20:
+            return "ru", 0.75
         if arabic / total > 0.20:
             return "ar", 0.75
-        if ethiopic / total > 0.20:
-            return "am", 0.80
-        return "en", 0.50
+        return "en", 0.50    # uncertain
+
+    def _source_allowed_langs(self, source_name: str) -> Set[str]:
+        return self._overrides.get(source_name, set())

@@ -51,12 +51,19 @@ def run_dataset_clean(cfg, ctx: RunContext, res, unified_log, state: PipelineSta
 
             raw_dir     = res.raw_dir()
             cleaned_dir = res.cleaned_dir()
-            raw_files   = list_files(raw_dir, glob="*.txt")
+            raw_files   = list_files(raw_dir, glob="*.txt")  # natural sort: wk_0,1,2..10,11..
 
             if not raw_files:
                 raise FileNotFoundError(
                     f"No .txt files in {raw_dir}. Add Wikipedia dump files."
                 )
+
+            logger.info(
+                "Dataset cleaning: %d files  order: %s … %s",
+                len(raw_files),
+                raw_files[0].name,
+                raw_files[-1].name,
+            )
 
             total_raw = total_cleaned = 0
             for raw_file in raw_files:

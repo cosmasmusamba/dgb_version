@@ -3,16 +3,36 @@ modules/utils/file_handler.py
 ==============================
 Enterprise file I/O utilities — directory management, file discovery,
 line iteration, size reporting, and JSON reading.
+
+All file-listing functions use natural sort so that wk_2.txt always
+comes before wk_10.txt regardless of the underlying filesystem order.
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Generator, Iterable, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _natural_sort_key(path: Path):
+    """
+    Sort key that orders embedded integers numerically.
+
+    Examples
+    --------
+    wk_0  < wk_1  < wk_2  < ... < wk_9  < wk_10 < wk_11 < wk_100
+    (instead of: wk_0 wk_1 wk_10 wk_100 wk_11 wk_2 …)
+    """
+    name = path.name if isinstance(path, Path) else str(path)
+    return [
+        int(part) if part.isdigit() else part.lower()
+        for part in re.split(r"(\d+)", name)
+    ]
 
 
 def ensure_dir(path: Path) -> Path:
@@ -27,13 +47,20 @@ def list_files(
     glob:      str = "*.txt",
     recursive: bool = False,
 ) -> List[Path]:
-    """Return sorted list of files matching `glob` in `directory`."""
+    """
+    Return naturally-sorted list of files matching `glob` in `directory`.
+
+    Uses natural (human) sort so numeric suffixes are ordered correctly:
+        wk_0, wk_1, wk_2, …, wk_9, wk_10, wk_11, …, wk_100
+    instead of lexicographic:
+        wk_0, wk_1, wk_10, wk_100, wk_11, wk_2, …
+    """
     directory = Path(directory)
     if not directory.exists():
         logger.debug("Directory not found: %s", directory)
         return []
     pattern = f"**/{glob}" if recursive else glob
-    files   = sorted(directory.glob(pattern))
+    files   = sorted(directory.glob(pattern), key=_natural_sort_key)
     logger.debug("list_files(%s, %s) → %d files", directory.name, glob, len(files))
     return files
 
@@ -92,6 +119,11 @@ def latest_file_by_name(
     directory: Path,
     glob:      str = "*.json",
 ) -> Optional[Path]:
-    """Return the lexicographically last file matching glob (datetime prefix = newest)."""
+    """
+    Return the lexicographically last file matching glob.
+    For datetime-prefixed artifacts (YYYYMMDDHHmmss_*) this is always
+    the most recently created one regardless of numeric suffixes.
+    Uses natural sort within same-prefix groups.
+    """
     files = list_files(directory, glob=glob)
     return files[-1] if files else None

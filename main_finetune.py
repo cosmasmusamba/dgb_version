@@ -19,7 +19,7 @@ from modules.utils.path_resolver import init_path_resolver
 from tokenizer.dgb_tokenizer import DGBTokenizer
 from transformer.core.transformer_model import DGBTransformer
 from transformer.utils.model_helpers import load_model
-from trainer.finetune.finetuner import ModelFineTuner, FineTuningConfig
+from finetune.finetuner import ModelFineTuner, FineTuningConfig
 
 logging.basicConfig(
     level=logging.INFO,

@@ -3,9 +3,12 @@ trainer/core/dataset_loader.py
 ================================
 Streaming dataset for large text corpora — never loads full file into memory.
 FIX T6: num_workers=0 default; worker sharding uses line-level not file-level.
+
+All internal file lists are sorted with natural sort so that
+wk_2.txt always comes before wk_10.txt.
 """
 from __future__ import annotations
-import logging, random
+import logging, re, random
 from pathlib import Path
 from typing import Callable, Iterable, List, Optional, Tuple
 logger = logging.getLogger(__name__)
@@ -16,6 +19,15 @@ try:
     _HAS_TORCH = True
 except ImportError:
     _HAS_TORCH = False
+
+
+def _natural_sort_key(path: Path):
+    """Sort key for human-numeric ordering: wk_2 < wk_10 < wk_100."""
+    name = path.name if isinstance(path, Path) else str(path)
+    return [
+        int(p) if p.isdigit() else p.lower()
+        for p in re.split(r"(\d+)", name)
+    ]
 
 
 class StreamingTextDataset(IterableDataset if _HAS_TORCH else object):
@@ -29,7 +41,8 @@ class StreamingTextDataset(IterableDataset if _HAS_TORCH else object):
         self._sf       = start_file_idx
         self._sl       = start_line_idx
         self._on_line  = on_line
-        self._files    = sorted(self._dir.glob("*.txt"))
+        # Natural sort so wk_2 < wk_10 < wk_100
+        self._files    = sorted(self._dir.glob("*.txt"), key=_natural_sort_key)
 
     def __iter__(self):
         import torch
