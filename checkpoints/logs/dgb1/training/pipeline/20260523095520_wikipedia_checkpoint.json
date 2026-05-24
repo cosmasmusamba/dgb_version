@@ -1,0 +1,40 @@
+{
+  "source_name": "wikipedia",
+  "run_id": "20260523095520",
+  "started_at": 1779519320.3234391,
+  "updated_at": 1779519320.3502321,
+  "completed": false,
+  "failed": true,
+  "error": "aiohttp required: pip install aiohttp",
+  "streams": {
+    "https://dumps.wikimedia.org/enwiki/20260501/enwiki-20260501-pages-articles-multistream.xml.bz2": {
+      "url": "https://dumps.wikimedia.org/enwiki/20260501/enwiki-20260501-pages-articles-multistream.xml.bz2",
+      "byte_offset": 0,
+      "records_seen": 0,
+      "records_accepted": 0,
+      "last_updated": 1779519320.343436
+    }
+  },
+  "current_stream": "",
+  "current_shard": {
+    "shard_id": "",
+    "shard_path": "",
+    "records_written": 0,
+    "bytes_written": 0,
+    "is_open": false,
+    "last_updated": 1779519320.3234413
+  },
+  "completed_shards": [
+    "datasets\\wikipedia\\20260523095520_wikipedia_000000.jsonl"
+  ],
+  "last_batch_idx": 0,
+  "total_batches": 0,
+  "stages": {},
+  "total_raw": 0,
+  "total_extracted": 0,
+  "total_accepted": 0,
+  "total_rejected": 0,
+  "total_bytes_out": 0,
+  "dedup_removed": 0,
+  "dedup_index_path": ""
+}

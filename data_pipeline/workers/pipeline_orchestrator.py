@@ -199,12 +199,13 @@ class PipelineOrchestrator:
     def _discover_sources(self) -> Dict[str, dict]:
         """Return ordered dict of {source_name: source_cfg_dict} from config."""
         sources_cfg = getattr(self._cfg, "sources", None) or {}
-        if hasattr(sources_cfg, "__dict__"):
+        # sources is always a plain dict from JSON via extra="allow" in DGBConfig
+        if hasattr(sources_cfg, "__dict__") and not isinstance(sources_cfg, dict):
             sources_cfg = sources_cfg.__dict__
 
         result = {}
         for name, scfg in sources_cfg.items():
-            if hasattr(scfg, "__dict__"):
+            if hasattr(scfg, "__dict__") and not isinstance(scfg, dict):
                 scfg = scfg.__dict__
             if not scfg.get("enabled", True):
                 continue
@@ -236,8 +237,12 @@ class PipelineOrchestrator:
             return None
         try:
             ExtCls   = _load_extractor_class(cls_path)
+            # scfg is a plain dict from JSON; ensure it stays a dict
+            scfg_dict = dict(scfg) if isinstance(scfg, dict) else (
+                scfg.model_dump() if hasattr(scfg, "model_dump") else vars(scfg)
+            )
             extractor = ExtCls.build(
-                {**scfg, "source_name": name},
+                {**scfg_dict, "source_name": name},
                 checkpoint_mgr=self._ckpt,
                 quota_mgr=self._quota,
             )
@@ -256,9 +261,14 @@ class PipelineOrchestrator:
             return None
 
     def _build_quota_mgr(self) -> QuotaManager:
-        qcfg = getattr(self._cfg, "storage_quotas", None) or {}
-        if hasattr(qcfg, "__dict__"):
-            qcfg = qcfg.__dict__
+        qcfg_raw = getattr(self._cfg, "storage_quotas", None) or {}
+        # StorageQuotasConfig is a Pydantic model — convert to dict for iteration
+        if hasattr(qcfg_raw, "model_dump"):
+            qcfg = qcfg_raw.model_dump()
+        elif hasattr(qcfg_raw, "__dict__") and not isinstance(qcfg_raw, dict):
+            qcfg = qcfg_raw.__dict__
+        else:
+            qcfg = dict(qcfg_raw)
 
         source_quotas = {}
         for k, v in qcfg.items():

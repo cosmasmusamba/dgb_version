@@ -183,15 +183,21 @@ class PipelineConfigManager:
             val = getattr(self._cfg, name, None)
             if val is None:
                 return {}
-            if hasattr(val, "__dict__"):
+            # Convert Pydantic models to plain dict; plain dicts pass through
+            if hasattr(val, "model_dump"):
+                d = val.model_dump()
+            elif isinstance(val, dict):
+                d = dict(val)
+            elif hasattr(val, "__dict__") and not isinstance(val, dict):
                 d = dict(val.__dict__)
-                # Apply overrides
-                for k, v in self._overrides.items():
-                    if k.startswith(f"{name}."):
-                        field = k[len(name)+1:]
-                        d[field] = v
-                return d
-            return val
+            else:
+                return val
+            # Apply runtime overrides
+            for k, v in self._overrides.items():
+                if k.startswith(f"{name}."):
+                    field = k[len(name)+1:]
+                    d[field] = v
+            return d
 
     def summary(self) -> str:
         lines = [f"PipelineConfigManager (overrides: {len(self._overrides)})"]

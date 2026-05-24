@@ -133,9 +133,15 @@ class QualityScorer:
 
     @classmethod
     def from_cfg(cls, cfg) -> "QualityScorer":
-        qc = getattr(cfg, "quality_scorer", None) or {}
-        if hasattr(qc, "__dict__"):
-            qc = qc.__dict__
+        qc_raw = getattr(cfg, "quality_scorer", None) or {}
+        if hasattr(qc_raw, "model_dump"):
+            qc = qc_raw.model_dump()
+        elif isinstance(qc_raw, dict):
+            qc = qc_raw
+        elif hasattr(qc_raw, "__dict__"):
+            qc = dict(qc_raw.__dict__)
+        else:
+            qc = {}
         return cls(
             min_overall_quality=qc.get("min_overall_quality", 0.35),
             min_alpha_ratio=qc.get("min_alpha_ratio", 0.50),

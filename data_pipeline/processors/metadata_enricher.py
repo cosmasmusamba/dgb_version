@@ -85,9 +85,15 @@ class MetadataEnricher:
 
     @classmethod
     def from_cfg(cls, cfg) -> "MetadataEnricher":
-        ec = getattr(cfg, "metadata_enricher", None) or {}
-        if hasattr(ec, "__dict__"):
-            ec = ec.__dict__
+        ec_raw = getattr(cfg, "metadata_enricher", None) or {}
+        if hasattr(ec_raw, "model_dump"):
+            ec = ec_raw.model_dump()
+        elif isinstance(ec_raw, dict):
+            ec = ec_raw
+        elif hasattr(ec_raw, "__dict__"):
+            ec = dict(ec_raw.__dict__)
+        else:
+            ec = {}
         return cls(
             estimate_tokens=ec.get("estimate_tokens", True),
             detect_topics=ec.get("detect_topics", True),

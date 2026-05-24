@@ -75,9 +75,15 @@ class TextNormalizer:
 
     @classmethod
     def from_cfg(cls, cfg) -> "TextNormalizer":
-        nc = getattr(cfg, "normalizer", None) or {}
-        if hasattr(nc, "__dict__"):
-            nc = nc.__dict__
+        nc_raw = getattr(cfg, "normalizer", None) or {}
+        if hasattr(nc_raw, "model_dump"):
+            nc = nc_raw.model_dump()
+        elif isinstance(nc_raw, dict):
+            nc = nc_raw
+        elif hasattr(nc_raw, "__dict__"):
+            nc = dict(nc_raw.__dict__)
+        else:
+            nc = {}
         return cls(
             min_chars=nc.get("min_chars", 50),
             max_chars=nc.get("max_chars", 0),

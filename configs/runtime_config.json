@@ -133,7 +133,7 @@
         "dump_date": "20260501",
         "min_article_chars": 500,
         "max_article_chars": 200000,
-        "local_dir": "datasets/dgb1/wk_raw"
+        "local_dir": ""
       }
     },
     "stackexchange": {
@@ -161,14 +161,15 @@
       }
     },
     "gutenberg": {
-      "enabled":            false,
+      "enabled":            true,
       "extractor_type":     "gutenberg",
       "batch_size":         10,
       "max_docs":           5000,
       "extra": {
         "language_filter":  ["en"],
         "min_chars":        5000,
-        "max_books":        5000
+        "max_books":        5000,
+        "source_dir": "datasets/dump/gutenberg"
       }
     },
     "commoncrawl": {
@@ -195,24 +196,29 @@
       }
     }
   },
-  "fine_tuning": {
-    "enabled": false,
-    "learning_rate": 1e-5,
-    "batch_size": 8,
+  "finetune": {
+    "dataset_path": "datasets/dgb1/finetune/manual/expert.jsonl",
     "epochs": 3,
+    "batch_size": 8,
+    "checkpoint_dir": "checkpoints/dgb1/finetune",
+    "checkpoint_interval_steps": 500,
+    "validation_sample_size": 10,
+    "lora": {
+      "r": 8,
+      "alpha": 16,
+      "dropout": 0.05
+    },
+    "freeze_base": true,
+    "include_bias_and_norm": false,
+    "use_amp": true,
+    "max_grad_norm": 1.0,
     "warmup_steps": 100,
-    "weight_decay": 0.01,
-    "grad_clip": 1.0,
-    "gradient_accumulation_steps": 4,
-    "freeze_layers": 0,
-    "freeze_embeddings": false,
-    "use_lora": false,
-    "lora_r": 8,
-    "lora_alpha": 32,
-    "lora_dropout": 0.1,
-    "task_type": "chat",
-    "max_seq_len": 512,
-    "save_every_epochs": 1,
-    "eval_every_steps": 100
+    "total_steps": 10000,
+    "optimizer": {
+      "lr": 1e-4,
+      "weight_decay": 0.01,
+      "betas": [0.9, 0.95],
+      "eps": 1e-8
+    }
   }
 }

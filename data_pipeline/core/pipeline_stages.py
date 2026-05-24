@@ -114,16 +114,17 @@ class PreprocessingPipeline:
         from data_pipeline.processors.quality_scorer   import QualityScorer
         from data_pipeline.processors.deduplicator     import Deduplicator
 
-        enabled = {}
-        ps = getattr(cfg, "pipeline_stages", None) or {}
-        if hasattr(ps, "__dict__"):
-            ps = ps.__dict__
+        ps_raw = getattr(cfg, "pipeline_stages", None)
+        def _ps_get(key, default=True):
+            if ps_raw is None: return default
+            if isinstance(ps_raw, dict): return ps_raw.get(key, default)
+            return getattr(ps_raw, key, default)
         enabled = {
-            "normalize":       ps.get("normalize",       True),
-            "language_filter": ps.get("language_filter", True),
-            "toxicity_filter": ps.get("toxicity_filter", True),
-            "quality_scorer":  ps.get("quality_scorer",  True),
-            "deduplicator":    ps.get("deduplicator",    True),
+            "normalize":       _ps_get("normalize"),
+            "language_filter": _ps_get("language_filter"),
+            "toxicity_filter": _ps_get("toxicity_filter"),
+            "quality_scorer":  _ps_get("quality_scorer"),
+            "deduplicator":    _ps_get("deduplicator"),
         }
 
         return cls(

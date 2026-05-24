@@ -155,9 +155,15 @@ class ToxicityFilter:
 
     @classmethod
     def from_cfg(cls, cfg) -> "ToxicityFilter":
-        tc = getattr(cfg, "toxicity_filter", None) or {}
-        if hasattr(tc, "__dict__"):
-            tc = tc.__dict__
+        tc_raw = getattr(cfg, "toxicity_filter", None) or {}
+        if hasattr(tc_raw, "model_dump"):
+            tc = tc_raw.model_dump()
+        elif isinstance(tc_raw, dict):
+            tc = tc_raw
+        elif hasattr(tc_raw, "__dict__"):
+            tc = dict(tc_raw.__dict__)
+        else:
+            tc = {}
         return cls(
             max_toxicity_score=tc.get("max_toxicity_score", 0.80),
             max_hate_score=tc.get("max_hate_score", 0.70),

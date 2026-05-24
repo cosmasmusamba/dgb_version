@@ -201,16 +201,14 @@ class SourceWorker:
         return stats
 
     def _get_max_shard_bytes(self) -> int:
-        sc = getattr(self._cfg, "pipeline", None) or {}
-        if hasattr(sc, "__dict__"):
-            sc = sc.__dict__
-        return sc.get("max_shard_bytes", 512 * 1024 * 1024)
+        sc = getattr(self._cfg, "pipeline", None)
+        if sc is None: return 512 * 1024 * 1024
+        return sc.max_shard_bytes if hasattr(sc, "max_shard_bytes") else sc.get("max_shard_bytes", 512*1024*1024)
 
     def _get_max_shard_records(self) -> int:
-        sc = getattr(self._cfg, "pipeline", None) or {}
-        if hasattr(sc, "__dict__"):
-            sc = sc.__dict__
-        return sc.get("max_shard_records", 1_000_000)
+        sc = getattr(self._cfg, "pipeline", None)
+        if sc is None: return 1_000_000
+        return sc.max_shard_records if hasattr(sc, "max_shard_records") else sc.get("max_shard_records", 1_000_000)
 
 
 class _SourcePipelineCfg:

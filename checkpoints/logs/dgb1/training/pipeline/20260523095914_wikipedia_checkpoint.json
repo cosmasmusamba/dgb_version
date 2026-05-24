@@ -1,0 +1,40 @@
+{
+  "source_name": "wikipedia",
+  "run_id": "20260523095914",
+  "started_at": 1779519554.4893196,
+  "updated_at": 1779521829.0789864,
+  "completed": false,
+  "failed": true,
+  "error": "",
+  "streams": {
+    "https://dumps.wikimedia.org/enwiki/20260501/enwiki-20260501-pages-articles-multistream.xml.bz2": {
+      "url": "https://dumps.wikimedia.org/enwiki/20260501/enwiki-20260501-pages-articles-multistream.xml.bz2",
+      "byte_offset": 0,
+      "records_seen": 0,
+      "records_accepted": 0,
+      "last_updated": 1779519554.5075011
+    }
+  },
+  "current_stream": "",
+  "current_shard": {
+    "shard_id": "",
+    "shard_path": "",
+    "records_written": 0,
+    "bytes_written": 0,
+    "is_open": false,
+    "last_updated": 1779519554.4893212
+  },
+  "completed_shards": [
+    "datasets\\wikipedia\\20260523095914_wikipedia_000000.jsonl"
+  ],
+  "last_batch_idx": 0,
+  "total_batches": 0,
+  "stages": {},
+  "total_raw": 0,
+  "total_extracted": 0,
+  "total_accepted": 0,
+  "total_rejected": 0,
+  "total_bytes_out": 0,
+  "dedup_removed": 0,
+  "dedup_index_path": ""
+}

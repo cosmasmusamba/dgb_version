@@ -74,9 +74,15 @@ class LanguageDetector:
 
     @classmethod
     def from_cfg(cls, cfg) -> "LanguageDetector":
-        lc = getattr(cfg, "language_filter", None) or {}
-        if hasattr(lc, "__dict__"):
-            lc = lc.__dict__
+        lc_raw = getattr(cfg, "language_filter", None) or {}
+        if hasattr(lc_raw, "model_dump"):
+            lc = lc_raw.model_dump()
+        elif isinstance(lc_raw, dict):
+            lc = lc_raw
+        elif hasattr(lc_raw, "__dict__"):
+            lc = dict(lc_raw.__dict__)
+        else:
+            lc = {}
         overrides = {}
         for src, langs in lc.get("source_overrides", {}).items():
             overrides[src] = set(langs) if langs != ["*"] else {"*"}

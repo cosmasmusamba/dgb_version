@@ -173,9 +173,13 @@ class Deduplicator:
 
     @classmethod
     def from_cfg(cls, cfg, state_dir: Path, run_id: str = "") -> "Deduplicator":
-        dc = getattr(cfg, "deduplicator", None) or {}
-        if hasattr(dc, "__dict__"):
-            dc = dc.__dict__
+        dc_raw = getattr(cfg, "deduplicator", None) or {}
+        if hasattr(dc_raw, "model_dump"):
+            dc = dc_raw.model_dump()
+        elif isinstance(dc_raw, dict):
+            dc = dc_raw
+        else:
+            dc = dict(getattr(dc_raw, "__dict__", {}))
         return cls(
             state_dir=state_dir,
             run_id=run_id,

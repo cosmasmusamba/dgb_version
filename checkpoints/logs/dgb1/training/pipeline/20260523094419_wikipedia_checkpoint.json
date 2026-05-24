@@ -1,0 +1,40 @@
+{
+  "source_name": "wikipedia",
+  "run_id": "20260523094419",
+  "started_at": 1779518659.6268723,
+  "updated_at": 1779518660.041116,
+  "completed": true,
+  "failed": false,
+  "error": "",
+  "streams": {
+    "datasets\\dgb1\\wk_raw\\wk_0.txt": {
+      "url": "datasets\\dgb1\\wk_raw\\wk_0.txt",
+      "byte_offset": 461,
+      "records_seen": 9569,
+      "records_accepted": 2080,
+      "last_updated": 1779518660.0216076
+    }
+  },
+  "current_stream": "datasets\\dgb1\\wk_raw\\wk_0.txt",
+  "current_shard": {
+    "shard_id": "",
+    "shard_path": "",
+    "records_written": 0,
+    "bytes_written": 0,
+    "is_open": false,
+    "last_updated": 1779518659.626878
+  },
+  "completed_shards": [
+    "datasets\\wikipedia\\20260523094419_wikipedia_000000.jsonl"
+  ],
+  "last_batch_idx": 1,
+  "total_batches": 0,
+  "stages": {},
+  "total_raw": 64,
+  "total_extracted": 0,
+  "total_accepted": 0,
+  "total_rejected": 64,
+  "total_bytes_out": 0,
+  "dedup_removed": 0,
+  "dedup_index_path": ""
+}
