@@ -10,8 +10,16 @@ BroadcastHub:
   - Auto-cleans disconnected subscribers
 
 StreamEvent:
-  - Typed factory methods: .log(), .metric(), .progress(), .status()
+  - Typed factory methods: .log(), .metric(), .progress(), .status(), .done()
   - Serialises to SSE data: payload over a text/event-stream connection
+
+StreamQueue:
+  - Thin wrapper around asyncio.Queue used by SSE endpoint
+  - Type-aliased so callers can `from modules.utils.streaming import StreamQueue`
+
+Helpers:
+  - reset_training_hub()  — replace the singleton (tests / multi-run)
+  - sse_format(event)     — format a dict as a raw SSE string
 """
 from __future__ import annotations
 
@@ -22,12 +30,15 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Set
-import weakref
 
 from configs.constants import STREAM_QUEUE_MAXSIZE, StreamEventType
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# StreamEvent
+# ---------------------------------------------------------------------------
 
 @dataclass
 class StreamEvent:
@@ -88,6 +99,18 @@ class StreamEvent:
         }
 
 
+# ---------------------------------------------------------------------------
+# StreamQueue  — type alias used by API routes / SSE endpoints
+# ---------------------------------------------------------------------------
+
+# Thin alias so callers can type-hint as StreamQueue without knowing asyncio
+StreamQueue = asyncio.Queue
+
+
+# ---------------------------------------------------------------------------
+# BroadcastHub
+# ---------------------------------------------------------------------------
+
 class BroadcastHub:
     """
     Thread-safe, async-friendly fan-out message bus.
@@ -109,7 +132,6 @@ class BroadcastHub:
         self._name     = name
         self._maxsize  = maxsize
         self._lock     = threading.Lock()
-        self._loops:   Set[asyncio.AbstractEventLoop] = set()
         # Keyed by subscriber id → (loop, asyncio.Queue)
         self._subs: Dict[int, tuple] = {}
         self._next_id  = 0
@@ -144,7 +166,7 @@ class BroadcastHub:
         """Return an async context manager yielding an asyncio.Queue of StreamEvents."""
         return _Subscription(self)
 
-    def _add_subscriber(self, loop: asyncio.AbstractEventLoop) -> tuple[int, asyncio.Queue]:
+    def _add_subscriber(self, loop: asyncio.AbstractEventLoop) -> tuple:
         q = asyncio.Queue(maxsize=self._maxsize)
         with self._lock:
             sid = self._next_id
@@ -185,13 +207,16 @@ class _Subscription:
             self._hub._remove_subscriber(self._sid)
 
 
-# ── Singleton management ──────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Singleton management
+# ---------------------------------------------------------------------------
 
 _hubs: Dict[str, BroadcastHub] = {}
 _hub_lock = threading.Lock()
 
 
 def get_training_hub() -> BroadcastHub:
+    """Return (or lazily create) the singleton training broadcast hub."""
     return _get_hub("training")
 
 
@@ -200,3 +225,33 @@ def _get_hub(name: str) -> BroadcastHub:
         if name not in _hubs:
             _hubs[name] = BroadcastHub(name=name)
         return _hubs[name]
+
+
+def reset_training_hub() -> BroadcastHub:
+    """
+    Replace the training hub singleton with a fresh instance.
+
+    Called between runs in the main pipeline or in tests to ensure
+    subscribers from a previous run do not receive events from the next.
+    """
+    with _hub_lock:
+        _hubs["training"] = BroadcastHub(name="training")
+    logger.debug("Training hub reset")
+    return _hubs["training"]
+
+
+# ---------------------------------------------------------------------------
+# SSE helpers
+# ---------------------------------------------------------------------------
+
+def sse_format(data: Dict[str, Any], event: str = "message") -> str:
+    """
+    Format a plain dict as a raw SSE string.
+
+    Use this when you have a dict (not a StreamEvent) that you need to
+    push directly to an SSE endpoint without going through BroadcastHub.
+
+        yield sse_format({"step": 100, "loss": 2.3}, event="metric")
+    """
+    payload = json.dumps(data, ensure_ascii=False, default=str)
+    return f"event: {event}\ndata: {payload}\n\n"
