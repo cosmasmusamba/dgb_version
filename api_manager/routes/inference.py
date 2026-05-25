@@ -66,7 +66,6 @@ def _load_tokenizer():
     logger.info("Tokenizer loaded: vocab_size=%d", _tokenizer.vocab_size)
     return _tokenizer
 
-
 def _load_model():
     global _model, _device
     if _model is not None:
@@ -80,9 +79,12 @@ def _load_model():
     tf     = cfg.transformer
     res    = _get_resolver()
     _device = resolve_device(cfg.training.device)
+    
+    # Load tokenizer first to get the correct vocabulary size
+    tokenizer = _load_tokenizer()
 
     m = DGBTransformer(
-        vocab_size=tf.vocab_size,
+        vocab_size=tokenizer.vocab_size,  # Use actual trained vocab size
         d_model=tf.d_model,
         n_heads=tf.n_heads,
         n_encoder_layers=tf.n_encoder_layers,
@@ -94,7 +96,7 @@ def _load_model():
         tie_embeddings=tf.tie_embeddings,
     ).to(_device)
 
-    models_dir = res.models_dir(create=False)  # FIX B3: correct call
+    models_dir = res.models_dir(create=False)
     ckpt = latest_checkpoint(models_dir)
     if ckpt:
         load_checkpoint(ckpt, m, device=_device)
@@ -104,7 +106,6 @@ def _load_model():
     m.eval()
     _model = m
     return _model, _device
-
 
 def _get_engine():
     global _engine
