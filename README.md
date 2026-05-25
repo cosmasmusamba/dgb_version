@@ -49,16 +49,6 @@ DGB_MODELS_DIR      Override model checkpoint path
 ## Architecture
 See docs/architecture.md for full module index and data flow.
 
-## Bug fixes in v3.0.0
-- B1: max_seq_len correctly set to 512 (was vocab_size=8000)
-- B2: removed duplicate checkpoint load in trainer.py
-- B3: inference.py uses PathResolver.tokenizer_dir() correctly
-- B4: learning_rate read from config (was hardcoded 1e-3)
-- T4: seed 42 applied to torch/random/numpy
-- T6: num_workers=0 until multi-file corpus
-
----
-
 ## Data pipeline
 
 The DGB data pipeline ingests and preprocesses large-scale text corpora from multiple sources simultaneously.
