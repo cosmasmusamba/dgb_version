@@ -141,3 +141,39 @@ def init_path_resolver(
         from configs.loader import get_config
         cfg = get_config()
     return PathResolver(model_id=model_id, cfg=cfg)
+
+
+# Global resolver instance for convenience
+_global_resolver = None
+
+def get_path_resolver(model_id: str = "dgb1", cfg=None):
+    """
+    Get or create a global PathResolver instance.
+    
+    Parameters
+    ----------
+    model_id: Model identifier (default: "dgb1")
+    cfg: DGBConfig instance (loads default if None)
+    
+    Returns
+    -------
+    PathResolver instance
+    """
+    global _global_resolver
+    
+    if _global_resolver is None:
+        if cfg is None:
+            from configs.loader import get_config
+            cfg = get_config()
+        _global_resolver = PathResolver(model_id=model_id, cfg=cfg)
+    else:
+        # If model_id or cfg changed, you might want to reinitialize
+        # For simplicity, we'll just return the existing instance
+        pass
+    
+    return _global_resolver
+
+def reset_path_resolver():
+    """Reset the global PathResolver instance (useful for testing)."""
+    global _global_resolver
+    _global_resolver = None

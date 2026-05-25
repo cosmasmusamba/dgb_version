@@ -54,7 +54,9 @@ class RunContext:
         e.g. "dgb1"
     """
 
-    def __init__(self, run_id: str, model_id: str = "dgb1") -> None:
+    def __init__(self, run_id: Optional[str] = None, model_id: str = "dgb1") -> None:
+        if run_id is None:
+            run_id = datetime.now().strftime("%Y%m%d%H%M%S")
         self.run_id   = run_id
         self.model_id = model_id
 
@@ -94,6 +96,16 @@ class RunContext:
         mid = model_id or self.model_id
         return self.prefix(f"{mid}_cleaned_{source_stem}.txt")
 
+    def cleaned_file_name(self, raw_filename: str) -> str:
+        """
+        Convenience method - takes full raw filename, returns cleaned filename.
+        
+        Example: raw_filename = "wk_0.txt" -> returns "20260525135015_dgb1_cleaned_wk_0.txt"
+        """
+        from pathlib import Path
+        source_stem = Path(raw_filename).stem
+        return self.cleaned_name(source_stem)
+
     def training_log_name(self) -> str:
         return self.prefix("training.log")
 
@@ -102,6 +114,9 @@ class RunContext:
 
     def pipeline_state_name(self) -> str:
         return self.prefix("pipeline_state.json")
+
+    def pipeline_log_name(self) -> str:
+        return self.prefix("pipeline_log.jsonl")
 
     def metrics_steps_name(self) -> str:
         return self.prefix("metrics_steps.json")
@@ -126,6 +141,48 @@ class RunContext:
 
     def best_model_name(self) -> str:
         return self.prefix("best_model.pt")
+
+    # ------------------------------------------------------------------
+    # Class methods for finding existing runs
+
+    @classmethod
+    def latest_for_model(cls, log_dir: Path, model_id: str) -> Optional["RunContext"]:
+        """
+        Find the most recent run for this model by scanning log_dir for
+        pipeline_state_<run_id>.json files and return a RunContext with that run_id.
+        
+        Parameters
+        ----------
+        log_dir: Directory containing run artefacts (e.g., res.logs_dir())
+        model_id: Model identifier (e.g., "dgb1")
+        
+        Returns
+        -------
+        RunContext with the latest run_id, or None if no previous runs found.
+        """
+        if not log_dir.exists():
+            return None
+        
+        # Look for pipeline_state_<run_id>.json files
+        import re
+        pattern = re.compile(r'^(\d{14})_pipeline_state\.json$')
+        
+        latest_ts = None
+        latest_run_id = None
+        
+        for file in log_dir.glob("*_pipeline_state.json"):
+            match = pattern.match(file.name)
+            if match:
+                run_id = match.group(1)
+                if latest_ts is None or run_id > latest_ts:
+                    latest_ts = run_id
+                    latest_run_id = run_id
+        
+        if latest_run_id:
+            logger.info(f"Found latest run: {latest_run_id}")
+            return cls(run_id=latest_run_id, model_id=model_id)
+        
+        return None
 
     # ------------------------------------------------------------------
 

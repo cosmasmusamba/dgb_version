@@ -189,7 +189,7 @@ def run_model_training(cfg, ctx: RunContext, res, unified_log, state: PipelineSt
             )
 
             # Metrics + progress
-            metrics = MetricsLogger(log_dir=log_dir, run_id=ctx.run_id)
+            metrics = MetricsLogger(save_dir=log_dir, run_id=ctx.run_id, model_id=cfg.project.model_id)
             total_est = train_cfg.epochs * 1000
             progress  = ProgressTracker(total=total_est, label="training")
 
@@ -214,7 +214,7 @@ def run_model_training(cfg, ctx: RunContext, res, unified_log, state: PipelineSt
                 run_id=ctx.run_id,
                 model_id=cfg.project.model_id,
             )
-            metrics.flush()
+            metrics.save()
             rec.mark_completed(best_loss=round(best_loss, 4))
     except Exception as exc:
         rec.mark_failed(str(exc))
@@ -236,13 +236,17 @@ def main() -> int:
     res = init_path_resolver(cfg.project.model_id, cfg)
     log_dir = res.logs_dir()
 
-    ctx = RunContext(
-        model_id=cfg.project.model_id,
-        run_id=args.run_id or None,
-    )
-    if not args.run_id:
+    # Handle run context properly
+    if args.run_id:
+        ctx = RunContext(model_id=cfg.project.model_id, run_id=args.run_id)
+    else:
         latest = RunContext.latest_for_model(log_dir, cfg.project.model_id)
-        ctx = latest
+        if latest is not None:
+            ctx = latest
+            logger.info(f"Resuming previous run: {ctx.run_id}")
+        else:
+            ctx = RunContext(model_id=cfg.project.model_id, run_id=None)
+            logger.info(f"Starting new run: {ctx.run_id}")
 
     state = PipelineState.load_latest(log_dir, cfg.project.model_id)
     state.run_id = ctx.run_id
