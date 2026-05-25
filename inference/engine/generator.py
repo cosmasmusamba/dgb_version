@@ -5,6 +5,16 @@ High-level generation engine.
 
 Combines beam search and top-p sampling under one interface.
 Loads the model lazily (once) and serves concurrent requests.
+
+Standard DGB utilities used
+----------------------------
+- configure_logging / set_log_stage   (consistent logging format)
+- get_config / get_path_resolver      (centralised config & path resolution)
+- init_path_resolver                  (dynamic path discovery)
+- UnifiedLogWriter / get_unified_log  (structured inference records)
+- DeviceMonitor                       (hardware telemetry during warmup)
+- StreamEvent / get_training_hub      (SSE fan-out for the API layer)
+- error_handler.InferenceError        (typed exception hierarchy)
 """
 
 from __future__ import annotations
@@ -18,6 +28,7 @@ from typing import AsyncGenerator, List, Optional, Tuple
 from inference.sampling.beam_search import BeamSearchDecoder, BeamSearchConfig, Hypothesis
 from inference.sampling.top_p_sampler import TopPSampler, GenerationConfig, StreamingSampler
 from modules.utils.error_handler import InferenceError, ModelInitError
+from modules.utils.unified_log import get_unified_log
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +48,26 @@ class InferenceEngine:
     model:      Loaded DGBTransformer (eval mode, on device).
     tokenizer:  Loaded DGBTokenizer.
     device:     torch.device for inference.
+    run_id:     RunContext run_id for unified log attribution.
     """
 
-    def __init__(self, model, tokenizer, device: "torch.device") -> None:
+    def __init__(
+        self,
+        model,
+        tokenizer,
+        device: "torch.device",
+        run_id: str = "",
+    ) -> None:
         self._model     = model
         self._tokenizer = tokenizer
         self._device    = device
+        self._run_id    = run_id
         self._lock      = asyncio.Lock()
         self._beam_dec  = BeamSearchDecoder(model, bos_id=2, eos_id=3, pad_id=0, device=device)
         self._stream_sampler = StreamingSampler(
             model, tokenizer, bos_id=2, eos_id=3, pad_id=0, device=device,
         )
-        self._total_tokens = 0
+        self._total_tokens   = 0
         self._total_requests = 0
 
     # ── Warm-up ───────────────────────────────────────────────────────
@@ -88,6 +107,7 @@ class InferenceEngine:
         beam_cfg: Optional[BeamSearchConfig],
     ) -> str:
         t0 = time.perf_counter()
+        method = "beam" if use_beam else "greedy"
         try:
             ids = self._tokenizer.encode(prompt, add_special_tokens=True)
             src = torch.tensor([ids], dtype=torch.long, device=self._device)
@@ -106,8 +126,19 @@ class InferenceEngine:
             text = self._tokenizer.decode(out_ids, skip_special_tokens=True)
             self._total_tokens   += len(out_ids)
             self._total_requests += 1
-            latency = (time.perf_counter() - t0) * 1000
-            logger.debug("Inference: %d tokens  %.0fms", len(out_ids), latency)
+            latency_ms = (time.perf_counter() - t0) * 1000
+            logger.debug("Inference: %d tokens  %.0fms  %s", len(out_ids), latency_ms, method)
+
+            # Emit structured inference record to unified log
+            ulog = get_unified_log()
+            if ulog is not None:
+                ulog.inference(
+                    prompt_tokens=len(ids),
+                    output_tokens=len(out_ids),
+                    latency_ms=latency_ms,
+                    method=method,
+                )
+
             return text
         except Exception as exc:
             logger.error("Inference error: %s", exc)
@@ -155,9 +186,14 @@ def get_engine() -> Optional[InferenceEngine]:
     return _engine
 
 
-def init_engine(model, tokenizer, device: "torch.device") -> InferenceEngine:
+def init_engine(
+    model,
+    tokenizer,
+    device: "torch.device",
+    run_id: str = "",
+) -> InferenceEngine:
     global _engine
-    _engine = InferenceEngine(model, tokenizer, device)
+    _engine = InferenceEngine(model, tokenizer, device, run_id=run_id)
     _engine.warmup()
     logger.info("InferenceEngine initialised on device=%s", device)
     return _engine
@@ -175,41 +211,56 @@ def run_inference(prompt: Optional[str] = None):
     from transformer.utils.model_helpers import load_model
     from inference.sampling.top_p_sampler import GenerationConfig
     from configs.loader import get_config
+    from modules.logging_config import configure_logging, set_log_stage
+    from modules.utils.run_context import get_run_context, create_run_context
     from modules.utils.path_resolver import init_path_resolver
-    
-    # Load config and setup path resolver dynamically
+    from modules.utils.unified_log import init_unified_log
+
+    # ── Logging & run context ─────────────────────────────────────────
     cfg = get_config()
-    model_id = cfg.project.model_id
-    path_resolver = init_path_resolver(model_id=model_id, cfg=cfg)
-    
-    # Get directories from path resolver
-    models_dir = path_resolver.models_dir(create=False)
-    tokenizer_dir = path_resolver.tokenizer_dir(create=False)
-        
-    # Find latest model checkpoint
+    configure_logging(level=cfg.logging.level)
+    set_log_stage("inference")
+
+    ctx = get_run_context() if True else create_run_context(cfg.project.model_id)
+
+    # ── Path resolution ───────────────────────────────────────────────
+    model_id    = cfg.project.model_id
+    res         = init_path_resolver(model_id=model_id, cfg=cfg)
+    models_dir  = res.models_dir(create=False)
+    tok_dir     = res.tokenizer_dir(create=False)
+    log_dir     = res.logs_dir()
+
+    # ── Unified log ───────────────────────────────────────────────────
+    ulog = init_unified_log(
+        log_dir / ctx.prefix("inference.jsonl"),
+        run_id=ctx.run_id,
+        model_id=model_id,
+    )
+    ulog.pipeline("Inference session started", stage="inference")
+
+    # ── Model discovery ───────────────────────────────────────────────
     model_files = sorted(models_dir.glob("*_best_model.pt"))
     if not model_files:
         model_files = sorted(models_dir.glob("*_epoch_*.pt"))
     if not model_files:
         raise FileNotFoundError(f"No model checkpoint found in {models_dir}")
     latest_model = model_files[-1]
-    
-    # Load tokenizer
-    if not tokenizer_dir.exists():
-        raise FileNotFoundError(f"Tokenizer directory not found: {tokenizer_dir}")
-    
-    tokenizer = DGBTokenizer.from_pretrained(tokenizer_dir)
-    
-    # Setup device
+    logger.info("Using model: %s", latest_model.name)
+
+    # ── Tokenizer ─────────────────────────────────────────────────────
+    if not tok_dir.exists():
+        raise FileNotFoundError(f"Tokenizer directory not found: {tok_dir}")
+    tokenizer = DGBTokenizer.from_pretrained(tok_dir)
+    logger.info("Tokenizer: vocab_size=%d", tokenizer.vocab_size)
+
+    # ── Device & model ────────────────────────────────────────────────
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # Load model with vocab_size from tokenizer
-    model = load_model(str(latest_model), device, vocab_size=tokenizer.vocab_size)
-    
-    # Initialize engine
-    engine = init_engine(model, tokenizer, device)
-    
-    # Generate response
+    model  = load_model(str(latest_model), device, vocab_size=tokenizer.vocab_size)
+
+    # ── Engine ────────────────────────────────────────────────────────
+    engine = init_engine(model, tokenizer, device, run_id=ctx.run_id)
+
+    # ── Generate ──────────────────────────────────────────────────────
     gen_cfg = GenerationConfig(
         max_new_tokens=100,
         temperature=0.7,
@@ -219,9 +270,12 @@ def run_inference(prompt: Optional[str] = None):
     test_prompt = prompt or "Hi there!"
     print(f"\n📝 Prompt: {test_prompt}\n")
     print("🤖 Generating...\n")
-    
+
     output = asyncio.run(engine.complete(test_prompt, gen_cfg))
     print(f"\n✨ Generated Response:\n{output}\n")
+
+    ulog.pipeline("Inference session complete", stage="inference")
+    ulog.close()
 
 
 if __name__ == "__main__":

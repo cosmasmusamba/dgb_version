@@ -3,29 +3,24 @@ main_data_pipeline.py
 =======================
 CLI entry point for the DGB large-scale data ingestion pipeline.
 
+Standard DGB utilities used
+----------------------------
+- get_config                  (centralised config / env-override)
+- configure_logging / LogStage
+- create_run_context          (datetime prefix for all artefacts)
+- init_path_resolver          (external path support)
+- init_unified_log            (single JSONL event stream for the run)
+- PipelineState               (stage-level resume + KV sub-stage offsets)
+- DynamicResourceManager      (shared across orchestrator and sub-stages)
+
 Usage
 -----
-  # Run all enabled sources
   python main_data_pipeline.py
-
-  # Run specific sources only
   python main_data_pipeline.py --sources wikipedia arxiv
-
-  # Skip sources
   python main_data_pipeline.py --skip commoncrawl
-
-  # Force re-run a completed source
   python main_data_pipeline.py --force wikipedia
-
-  # Print pipeline status and exit
   python main_data_pipeline.py --status
-
-  # Export processed shards to training format
-  python main_data_pipeline.py --export --format plain_text
   python main_data_pipeline.py --export --format jsonl_text_only
-  python main_data_pipeline.py --export --format jsonl_sft
-
-  # Dry run (validate config, list sources, exit)
   python main_data_pipeline.py --dry-run
 """
 from __future__ import annotations
@@ -41,8 +36,11 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 from configs.loader import get_config
-from modules.logging_config import configure_logging, LogStage
-from modules.utils.run_context import RunContext
+from modules.logging_config import configure_logging, LogStage, set_log_stage
+from modules.utils.run_context import RunContext, create_run_context
+from modules.utils.path_resolver import init_path_resolver
+from modules.utils.pipeline_state import PipelineState
+from modules.utils.unified_log import init_unified_log
 
 
 def _build_args() -> argparse.Namespace:
@@ -63,12 +61,12 @@ def _build_args() -> argparse.Namespace:
     p.add_argument("--export",   action="store_true",
                    help="Export processed shards to training format")
     p.add_argument("--format",   default="jsonl_text_only",
-                   choices=["plain_text","jsonl_text_only","jsonl_full","jsonl_sft"],
+                   choices=["plain_text", "jsonl_text_only", "jsonl_full", "jsonl_sft"],
                    help="Export format (default: jsonl_text_only)")
     p.add_argument("--export-dir", default=None,
-                   help="Output directory for exported shards (default: datasets/export/)")
+                   help="Output directory for exported shards")
     p.add_argument("--min-quality", type=float, default=0.0,
-                   help="Minimum overall_quality score to include in export")
+                   help="Minimum quality score to include in export")
     p.add_argument("--languages", nargs="+", default=[],
                    help="Filter export to these language codes")
     p.add_argument("--run-id",   default=None,
@@ -76,17 +74,16 @@ def _build_args() -> argparse.Namespace:
     p.add_argument("--concurrent", type=int, default=None,
                    help="Override max_concurrent_sources from config")
     p.add_argument("--log-level", default=None,
-                   choices=["DEBUG","INFO","WARNING","ERROR"],
+                   choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                    help="Override log level from config")
     return p.parse_args()
 
 
 def _print_status(cfg, run_id: str) -> None:
-    """Print checkpoint status for all sources and exit."""
-    from modules.utils.path_resolver import init_path_resolver
+    from modules.utils.path_resolver import get_path_resolver
     from data_pipeline.core.checkpoint import CheckpointManager
 
-    res     = init_path_resolver(cfg.project.model_id, cfg)
+    res      = get_path_resolver()
     ckpt_dir = res.logs_dir() / "pipeline"
     ckpt_mgr = CheckpointManager(checkpoint_dir=ckpt_dir, run_id=run_id)
 
@@ -100,9 +97,10 @@ def _print_status(cfg, run_id: str) -> None:
     print("-" * 70)
 
     for name in sorted(sources_cfg.keys()):
-        cp = ckpt_mgr.get(name)
-        status = "done" if cp.completed else ("failed" if cp.failed else
-                 "running" if cp.total_raw > 0 else "pending")
+        cp     = ckpt_mgr.get(name)
+        status = "done"    if cp.completed else (
+                 "failed"  if cp.failed    else (
+                 "running" if cp.total_raw > 0 else "pending"))
         print(
             f"  {name:<20} {status:<12} {cp.total_raw:>10,} "
             f"{cp.total_accepted:>10,} {len(cp.completed_shards):>6}"
@@ -111,18 +109,17 @@ def _print_status(cfg, run_id: str) -> None:
 
 
 def _run_export(cfg, args: argparse.Namespace, run_id: str) -> None:
-    """Export processed shards to training-ready format."""
     from data_pipeline.storage.export import ShardExporter, ExportFormat
 
     fmt_map = {
-        "plain_text":       ExportFormat.PLAIN_TEXT,
-        "jsonl_text_only":  ExportFormat.JSONL_TEXT_ONLY,
-        "jsonl_full":       ExportFormat.JSONL_FULL,
-        "jsonl_sft":        ExportFormat.JSONL_SFT,
+        "plain_text":      ExportFormat.PLAIN_TEXT,
+        "jsonl_text_only": ExportFormat.JSONL_TEXT_ONLY,
+        "jsonl_full":      ExportFormat.JSONL_FULL,
+        "jsonl_sft":       ExportFormat.JSONL_SFT,
     }
     fmt = fmt_map[args.format]
 
-    input_dirs = []
+    input_dirs  = []
     sources_cfg = getattr(cfg, "sources", {}) or {}
     if hasattr(sources_cfg, "__dict__"):
         sources_cfg = sources_cfg.__dict__
@@ -130,7 +127,6 @@ def _run_export(cfg, args: argparse.Namespace, run_id: str) -> None:
         d = Path("datasets") / name
         if d.exists():
             input_dirs.append(d)
-    # Also include legacy DGB cleaned dir
     legacy = Path("datasets") / cfg.project.model_id / "cleaned"
     if legacy.exists():
         input_dirs.append(legacy)
@@ -139,7 +135,10 @@ def _run_export(cfg, args: argparse.Namespace, run_id: str) -> None:
         print("No processed data found to export. Run the pipeline first.")
         return
 
-    export_dir = Path(args.export_dir) if args.export_dir else Path("datasets") / "export" / args.format
+    export_dir = (
+        Path(args.export_dir) if args.export_dir
+        else Path("datasets") / "export" / args.format
+    )
     print(f"\nExporting to: {export_dir}")
     print(f"Format:       {args.format}")
     print(f"Sources:      {len(input_dirs)} directories")
@@ -157,13 +156,13 @@ def _run_export(cfg, args: argparse.Namespace, run_id: str) -> None:
     print(f"\nExport complete:")
     print(f"  Documents:      {manifest.total_docs:,}")
     print(f"  Output shards:  {len(manifest.output_shards)}")
-    print(f"  Tokens (est):   {manifest.total_tokens_est/1e9:.2f}B")
-    print(f"  By source:")
+    print(f"  Tokens (est):   {manifest.total_tokens_est / 1e9:.2f}B")
+    print("  By source:")
     for src, n in sorted(manifest.source_breakdown.items(), key=lambda x: -x[1]):
         print(f"    {src:<20} {n:>10,}")
 
 
-async def _run_pipeline(cfg, args: argparse.Namespace, run_id: str) -> None:
+async def _run_pipeline(cfg, args: argparse.Namespace, ctx: RunContext) -> None:
     from data_pipeline.workers.pipeline_orchestrator import PipelineOrchestrator
 
     pipeline_cfg = getattr(cfg, "pipeline", None) or {}
@@ -173,12 +172,11 @@ async def _run_pipeline(cfg, args: argparse.Namespace, run_id: str) -> None:
 
     orchestrator = PipelineOrchestrator.from_cfg(
         cfg=cfg,
-        run_id=run_id,
+        run_id=ctx.run_id,
         force_sources=args.force or [],
         only_sources=args.sources or [],
         skip_sources=args.skip or [],
     )
-    # Override concurrency from CLI
     orchestrator._max_concurrent = max_conc
 
     await orchestrator.run()
@@ -191,15 +189,39 @@ def main() -> int:
 
     log_level = args.log_level or cfg.logging.level
     configure_logging(level=log_level)
+    set_log_stage("data_pipeline")
 
-    ctx = RunContext(model_id=cfg.project.model_id, run_id=args.run_id)
+    # ── Run context ────────────────────────────────────────────────────
+    if args.run_id:
+        ctx = RunContext(run_id=args.run_id, model_id=cfg.project.model_id)
+    else:
+        ctx = create_run_context(cfg.project.model_id)
+
+    # ── Path resolver ──────────────────────────────────────────────────
+    res = init_path_resolver(cfg.project.model_id, cfg)
+
+    # ── Unified log (single JSONL stream) ──────────────────────────────
+    ulog = init_unified_log(
+        res.logs_dir() / ctx.prefix("pipeline.jsonl"),
+        run_id=ctx.run_id,
+        model_id=cfg.project.model_id,
+    )
+
+    # ── Pipeline state ─────────────────────────────────────────────────
+    state = PipelineState.load_latest(res.logs_dir(), model_id=cfg.project.model_id)
+    state.run_id = ctx.run_id
 
     logger = logging.getLogger(__name__)
     logger.info("DGB Data Pipeline v%s  run_id=%s", cfg.project.version, ctx.run_id)
+    ulog.pipeline(
+        f"Data pipeline started  run_id={ctx.run_id}  v={cfg.project.version}",
+        stage="data_pipeline",
+    )
 
     # ── Status ─────────────────────────────────────────────────────────
     if args.status:
         _print_status(cfg, ctx.run_id)
+        print(state.summary())
         return 0
 
     # ── Dry run ────────────────────────────────────────────────────────
@@ -208,8 +230,10 @@ def main() -> int:
         sources_cfg = getattr(cfg, "sources", {}) or {}
         if hasattr(sources_cfg, "__dict__"):
             sources_cfg = sources_cfg.__dict__
-        enabled = [n for n, c in sources_cfg.items()
-                   if (c if isinstance(c, dict) else c.__dict__).get("enabled", True)]
+        enabled = [
+            n for n, c in sources_cfg.items()
+            if (c if isinstance(c, dict) else c.__dict__).get("enabled", True)
+        ]
         print(f"\nEnabled sources ({len(enabled)}):")
         for s in enabled:
             print(f"  - {s}")
@@ -217,15 +241,16 @@ def main() -> int:
         if hasattr(pipeline_cfg, "__dict__"):
             pipeline_cfg = pipeline_cfg.__dict__
         print(f"\nPipeline settings:")
-        print(f"  max_concurrent_sources: {pipeline_cfg.get('max_concurrent_sources',2)}")
-        print(f"  max_shard_bytes:        {pipeline_cfg.get('max_shard_bytes',536870912)/1024**2:.0f} MB")
-        print(f"  batch_size:             {pipeline_cfg.get('batch_size',1000)}")
+        print(f"  max_concurrent_sources: {pipeline_cfg.get('max_concurrent_sources', 2)}")
+        print(f"  max_shard_bytes:        {pipeline_cfg.get('max_shard_bytes', 536870912) / 1024**2:.0f} MB")
+        print(f"  batch_size:             {pipeline_cfg.get('batch_size', 1000)}")
         stages = getattr(cfg, "pipeline_stages", None) or {}
         if hasattr(stages, "__dict__"):
             stages = stages.__dict__
         print(f"\nPipeline stages:")
         for st, en in stages.items():
             print(f"  {st:<22} {'enabled' if en else 'disabled'}")
+        print(f"\n{res.summary()}")
         return 0
 
     # ── Export ─────────────────────────────────────────────────────────
@@ -238,12 +263,21 @@ def main() -> int:
     with LogStage("data_pipeline"):
         t0 = time.time()
         try:
-            asyncio.run(_run_pipeline(cfg, args, ctx.run_id))
+            asyncio.run(_run_pipeline(cfg, args, ctx))
         except KeyboardInterrupt:
             logger.info("Pipeline interrupted by user")
+            ulog.pipeline("Pipeline interrupted", stage="data_pipeline", level="WARNING")
         elapsed = time.time() - t0
-        logger.info("Total pipeline time: %.1fs (%.1f min)", elapsed, elapsed / 60)
+        logger.info(
+            "Total pipeline time: %.1fs (%.1f min)", elapsed, elapsed / 60
+        )
+        ulog.pipeline(
+            f"Pipeline finished  elapsed={elapsed:.1f}s",
+            stage="data_pipeline",
+        )
 
+    state.save(res.logs_dir())
+    ulog.close()
     return 0
 
 

@@ -1,18 +1,45 @@
 """
 modules/utils/unified_log.py
 =============================
-Unified structured event log — single JSONL stream per run.
+Single structured JSONL event stream for every DGB pipeline stage.
 
-Every subsystem (trainer, cleaner, tokenizer, API) writes to one
-chronological JSONL file per run:
+Every subsystem (trainer, cleaner, tokenizer, finetune, inference, API)
+writes to ONE chronological JSONL file per run:
     <run_id>_pipeline.jsonl
 
-Each line is a self-contained JSON object with type, stage, timestamp,
-and payload — making the file both human-readable and machine-parseable
-for dashboards, audits, and post-mortem analysis.
+Each line is a self-contained JSON record — machine-parseable for
+dashboards and human-readable for post-mortems.
 
-The writer is thread-safe (the training loop, resource monitor, and API
-may all emit events concurrently) and uses atomic line appends.
+───────────────────────────────────────────────────────────────────
+UNIFIED LOG SCHEMA  (every record carries these top-level fields)
+───────────────────────────────────────────────────────────────────
+{
+  "type":      <string>   # "batch" | "epoch" | "pipeline" | "device"
+                          # "tokenizer" | "dataset" | "finetune"
+                          # "inference" | "error"
+  "stage":     <string>   # which pipeline stage emitted this record
+  "level":     <string>   # "DEBUG" | "INFO" | "WARNING" | "ERROR"
+  "run_id":    <string>   # YYYYMMDDHHMMSS timestamp of this run
+  "model_id":  <string>   # e.g. "dgb1"
+  "timestamp": <float>    # Unix epoch seconds (UTC)
+  ... payload fields vary by type (see emitter docstrings below)
+}
+
+Type-specific payload fields:
+  batch      epoch, batch, step, loss, lr, grad_norm, ema_loss,
+             batch_size, accum, pressure, ram_avail
+  epoch      epoch, avg_loss, val_loss, best_loss, duration_sec,
+             n_batches, ema_loss, batch_size
+  pipeline   message
+  device     cpu_percent, ram_used_gb, ram_total_gb, gpu_util, …
+  tokenizer  message  [+ arbitrary extras]
+  dataset    message  [+ arbitrary extras]
+  finetune   message, epoch, step, loss  [+ arbitrary extras]
+  inference  prompt_tokens, output_tokens, latency_ms, method
+  error      message  [+ arbitrary extras]
+───────────────────────────────────────────────────────────────────
+
+All writes are thread-safe and non-blocking (threading.Lock + append mode).
 """
 from __future__ import annotations
 
@@ -30,11 +57,11 @@ class UnifiedLogWriter:
     """
     Thread-safe JSONL event log for one pipeline run.
 
-    Every call to batch(), epoch(), pipeline(), device() appends one
-    JSON line atomically to the configured file.
+    Every call to batch(), epoch(), finetune(), inference(), etc.
+    appends one JSON line atomically to the configured file.
 
-    The file is opened in append mode and an exclusive threading.Lock
-    guards every write so concurrent callers never interleave output.
+    The file is opened in append mode — it survives across restarts of
+    a resumed run and accumulates events chronologically.
     """
 
     def __init__(
@@ -49,11 +76,10 @@ class UnifiedLogWriter:
         self._lock     = threading.Lock()
         self._closed   = False
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        # Open in append mode — survives across restarts of a resumed run
         self._fh = self._path.open("a", encoding="utf-8", buffering=1)
         logger.debug("UnifiedLogWriter opened: %s", self._path.name)
 
-    # ── Write helpers ─────────────────────────────────────────────────
+    # ── Core emit ─────────────────────────────────────────────────────
 
     def _emit(self, type_: str, stage: str, level: str = "INFO", **payload: Any) -> None:
         if self._closed:
@@ -74,7 +100,7 @@ class UnifiedLogWriter:
             except Exception as exc:
                 logger.warning("UnifiedLog write failed: %s", exc)
 
-    # ── Domain-specific emitters ──────────────────────────────────────
+    # ── Training emitters ─────────────────────────────────────────────
 
     def batch(
         self,
@@ -83,6 +109,7 @@ class UnifiedLogWriter:
         ema_loss: float, batch_size: int, accum: int,
         pressure: str, ram_avail: float, **extra: Any,
     ) -> None:
+        """Emit one training batch record."""
         self._emit(
             "batch", stage="model_training",
             epoch=epoch, batch=batch, step=step,
@@ -97,8 +124,9 @@ class UnifiedLogWriter:
         self,
         epoch: int, avg_loss: float, best_loss: float,
         duration_sec: float, n_batches: int, ema_loss: float,
-        batch_size: int, val_loss: float = None, **extra: Any,
+        batch_size: int, val_loss: Optional[float] = None, **extra: Any,
     ) -> None:
+        """Emit one training epoch record."""
         self._emit(
             "epoch", stage="model_training",
             epoch=epoch, avg_loss=round(avg_loss, 6),
@@ -107,6 +135,61 @@ class UnifiedLogWriter:
             n_batches=n_batches, ema_loss=round(ema_loss, 6),
             batch_size=batch_size, **extra,
         )
+
+    # ── Finetune emitters ─────────────────────────────────────────────
+
+    def finetune(
+        self,
+        message:  str,
+        *,
+        epoch:    int   = 0,
+        step:     int   = 0,
+        loss:     Optional[float] = None,
+        level:    str   = "INFO",
+        **extra:  Any,
+    ) -> None:
+        """
+        Emit a finetune-stage record.
+
+        Covers: loop start/end, epoch start/end, batch events,
+        checkpoint autosaves, and errors — all under stage="finetune".
+        """
+        payload: Dict[str, Any] = {"message": message, "epoch": epoch, "step": step}
+        if loss is not None:
+            payload["loss"] = round(loss, 6)
+        payload.update(extra)
+        self._emit("finetune", stage="finetune", level=level, **payload)
+
+    # ── Inference emitters ────────────────────────────────────────────
+
+    def inference(
+        self,
+        prompt_tokens:  int,
+        output_tokens:  int,
+        latency_ms:     float,
+        method:         str = "greedy",
+        **extra:        Any,
+    ) -> None:
+        """
+        Emit one inference request record.
+
+        Fields
+        ------
+        prompt_tokens:  Token count of the input prompt.
+        output_tokens:  Token count of generated output.
+        latency_ms:     Wall-clock time for the generation call.
+        method:         Decoding method ("greedy", "beam", "top_p").
+        """
+        self._emit(
+            "inference", stage="inference",
+            prompt_tokens=prompt_tokens,
+            output_tokens=output_tokens,
+            latency_ms=round(latency_ms, 2),
+            method=method,
+            **extra,
+        )
+
+    # ── General pipeline emitters ─────────────────────────────────────
 
     def pipeline(
         self,
@@ -145,6 +228,12 @@ class UnifiedLogWriter:
     def __del__(self) -> None:
         self.close()
 
+    def __enter__(self) -> "UnifiedLogWriter":
+        return self
+
+    def __exit__(self, *_) -> None:
+        self.close()
+
 
 # ── Singleton management ──────────────────────────────────────────────────────
 
@@ -157,6 +246,12 @@ def init_unified_log(
     run_id:   str = "",
     model_id: str = "dgb1",
 ) -> UnifiedLogWriter:
+    """
+    Initialise (or replace) the process-wide UnifiedLogWriter.
+
+    Call once at pipeline startup, before any stage runs.
+    All subsequent calls to get_unified_log() return the same writer.
+    """
     global _writer
     with _init_lock:
         if _writer is not None:
@@ -166,4 +261,5 @@ def init_unified_log(
 
 
 def get_unified_log() -> Optional[UnifiedLogWriter]:
+    """Return the active UnifiedLogWriter, or None if not yet initialised."""
     return _writer
