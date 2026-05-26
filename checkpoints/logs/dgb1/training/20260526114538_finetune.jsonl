@@ -1,0 +1,8 @@
+{"type": "pipeline", "stage": "finetune", "level": "INFO", "run_id": "20260526114538", "model_id": "dgb1", "timestamp": 1779785138.5579724, "message": "Finetune started  run_id=20260526114538"}
+{"type": "finetune", "stage": "finetune", "level": "INFO", "run_id": "20260526114538", "model_id": "dgb1", "timestamp": 1779785138.5752587, "message": "Finetune started  run_id=20260526114538", "epoch": 0, "step": 0}
+{"type": "finetune", "stage": "finetune", "level": "INFO", "run_id": "20260526114538", "model_id": "dgb1", "timestamp": 1779785138.5758119, "message": "Dataset validated", "epoch": 0, "step": 0}
+{"type": "finetune", "stage": "finetune", "level": "INFO", "run_id": "20260526114538", "model_id": "dgb1", "timestamp": 1779785139.5697508, "message": "finetune_loop_start", "epoch": 0, "step": 0, "start_batch_offset": 0}
+{"type": "finetune", "stage": "finetune", "level": "INFO", "run_id": "20260526114538", "model_id": "dgb1", "timestamp": 1779785139.5699387, "message": "epoch_start", "epoch": 0, "step": 0, "batch_size": 4, "pressure": "normal"}
+{"type": "error", "stage": "finetune", "level": "ERROR", "run_id": "20260526114538", "model_id": "dgb1", "timestamp": 1779785145.1760638, "message": "train_step failed: 'MemoryManager' object has no attribute 'current_usage_gb'", "epoch": 0, "step": 0}
+{"type": "error", "stage": "finetune", "level": "ERROR", "run_id": "20260526114538", "model_id": "dgb1", "timestamp": 1779785145.181812, "message": "Finetune error: 'MemoryManager' object has no attribute 'current_usage_gb'"}
+{"type": "error", "stage": "finetune", "level": "ERROR", "run_id": "20260526114538", "model_id": "dgb1", "timestamp": 1779785145.2118108, "message": "Finetune failed: 'MemoryManager' object has no attribute 'current_usage_gb'"}

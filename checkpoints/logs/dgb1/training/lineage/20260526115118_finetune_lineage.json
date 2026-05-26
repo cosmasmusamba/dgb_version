@@ -1,0 +1,38 @@
+{
+  "run_id": "20260526115118",
+  "model_id": "dgb1",
+  "timestamp": "2026-05-26T11:51:46.825022",
+  "checkpoint_path": null,
+  "parent_checkpoint": null,
+  "dataset_hash": null,
+  "config_snapshot": {
+    "dataset_path": "datasets/dgb1/finetune/manual/expert.jsonl",
+    "epochs": 3,
+    "batch_size": 8,
+    "checkpoint_dir": "checkpoints/dgb1/finetune",
+    "checkpoint_interval_steps": 500,
+    "validation_sample_size": 10,
+    "lora": {
+      "r": 8,
+      "alpha": 16,
+      "dropout": 0.05
+    },
+    "freeze_base": true,
+    "include_bias_and_norm": false,
+    "use_amp": true,
+    "max_grad_norm": 1.0,
+    "warmup_steps": 100,
+    "total_steps": 10000,
+    "optimizer": {
+      "lr": 0.0001,
+      "weight_decay": 0.01,
+      "betas": [
+        0.9,
+        0.95
+      ],
+      "eps": 1e-08
+    }
+  },
+  "stage_state": {},
+  "metrics": {}
+}

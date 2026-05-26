@@ -19,7 +19,11 @@ import logging
 import sys
 from pathlib import Path
 
-# ── Bootstrap — must happen before any DGB import ─────────────────────────────
+# ── Bootstrap — add project root to path ─────────────────────────────────────
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 _logging_configured = False
 
 

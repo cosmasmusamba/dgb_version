@@ -1,33 +1,44 @@
 """
+finetune/core/finetune_dataset_loader.py
 Streaming dataset loader for finetune JSONL files.
-Uses modules.utils.streaming and path_resolver to locate files and stream safely.
-Provides sample loader for validation and batch streaming with resume support.
+Uses modules.utils.streaming to stream JSONL files safely.
 """
 import json
-from typing import Generator, Iterable, Dict, Any, Optional
+from typing import Generator, Dict, Any, Optional, Iterable
+from pathlib import Path
 
-from modules.utils.path_resolver import PathResolver
 from modules.utils.streaming import stream_jsonl
-from modules.utils.file_handler import FileHandler
-from modules.utils.progress_tracking import ProgressTracker
-from modules.utils.run_context import RunContext
+from modules.utils.path_resolver import init_path_resolver
+from modules.utils.run_context import get_run_context
+
 
 class FinetuneDatasetLoader:
-    def __init__(self, config: Dict[str, Any], run_ctx: Optional[RunContext] = None):
+    def __init__(self, config: Dict[str, Any], run_ctx: Optional = None):
+        from configs.loader import get_config
+        
         self.config = config
-        self.run_ctx = run_ctx or RunContext.default()
-        self.path_resolver = PathResolver(self.run_ctx)
-        self.file_handler = FileHandler()
-        self.dataset_path = self.path_resolver.resolve(config["finetune"]["dataset_path"])
-
+        self.run_ctx = run_ctx or get_run_context()
+        
+        cfg = get_config()
+        self.path_resolver = init_path_resolver(cfg.project.model_id, cfg)
+        
+        # Get dataset path from config
+        fin_cfg = getattr(cfg, "finetune", None)
+        if fin_cfg and hasattr(fin_cfg, "dataset_path"):
+            self.dataset_path = self.path_resolver.raw_dir() / fin_cfg.dataset_path
+        else:
+            self.dataset_path = Path("datasets/dgb1/finetune/manual/expert.jsonl")
+    
     def load(self) -> Generator[Dict[str, Any], None, None]:
         """
         Stream JSONL entries from dataset_path.
-        Yields parsed JSON objects one by one.
+        Yields parsed JSON objects converted to unified format.
         """
-        for obj in stream_jsonl(self.dataset_path):
-            yield obj
-
+        from finetune.utils.schema_validator import convert_dataset_format
+        
+        for entry in stream_jsonl(self.dataset_path):
+            yield convert_dataset_format(entry)
+    
     def load_sample(self, n: int = 10) -> Iterable[Dict[str, Any]]:
         """
         Return first n entries as a list (used for lightweight validation).
@@ -38,7 +49,7 @@ class FinetuneDatasetLoader:
             if i + 1 >= n:
                 break
         return sample
-
+    
     def stream_batches(self, batch_size: int, start_offset: int = 0) -> Generator[list, None, None]:
         """
         Stream batches of size batch_size. Supports start_offset to resume mid-file.

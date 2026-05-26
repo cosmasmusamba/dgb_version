@@ -1,0 +1,8 @@
+{
+  "epoch": 3,
+  "batch_idx": 0,
+  "global_step": 9,
+  "line_offset": 0,
+  "timestamp": 1779785506.8179233,
+  "note": "finetune_complete"
+}

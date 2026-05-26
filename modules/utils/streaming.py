@@ -28,6 +28,8 @@ import json
 import logging
 import threading
 import time
+from pathlib import Path
+from typing import Generator
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Set
 
@@ -255,3 +257,45 @@ def sse_format(data: Dict[str, Any], event: str = "message") -> str:
     """
     payload = json.dumps(data, ensure_ascii=False, default=str)
     return f"event: {event}\ndata: {payload}\n\n"
+
+# ---------------------------------------------------------------------------
+# JSONL streaming helper
+# ---------------------------------------------------------------------------
+
+def stream_jsonl(
+    file_path: Path,
+    encoding: str = "utf-8",
+    skip_empty: bool = True
+) -> Generator[Dict[str, Any], None, None]:
+    """
+    Stream JSONL (JSON Lines) file line by line.
+    
+    Args:
+        file_path: Path to JSONL file
+        encoding: File encoding (default: utf-8)
+        skip_empty: Skip empty lines (default: True)
+    
+    Yields:
+        Parsed JSON object from each line
+    
+    Example:
+        for item in stream_jsonl(Path("data.jsonl")):
+            print(item)
+    """
+    from pathlib import Path
+    import json
+    
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"JSONL file not found: {file_path}")
+    
+    with open(file_path, "r", encoding=encoding) as f:
+        for line_num, line in enumerate(f, 1):
+            line = line.strip()
+            if skip_empty and not line:
+                continue
+            try:
+                yield json.loads(line)
+            except json.JSONDecodeError as e:
+                logger.warning(f"Invalid JSON at line {line_num} in {file_path.name}: {e}")
+                continue

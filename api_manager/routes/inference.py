@@ -75,16 +75,15 @@ def _load_model():
     from transformer.core.transformer_model import DGBTransformer
     from transformer.utils.model_helpers import resolve_device, load_checkpoint, latest_checkpoint
 
-    cfg    = get_config()
-    tf     = cfg.transformer
-    res    = _get_resolver()
+    cfg = get_config()
+    tf = cfg.transformer
+    res = _get_resolver()
     _device = resolve_device(cfg.training.device)
-    
-    # Load tokenizer first to get the correct vocabulary size
+
     tokenizer = _load_tokenizer()
 
-    m = DGBTransformer(
-        vocab_size=tokenizer.vocab_size,  # Use actual trained vocab size
+    model = DGBTransformer(
+        vocab_size=tokenizer.vocab_size,
         d_model=tf.d_model,
         n_heads=tf.n_heads,
         n_encoder_layers=tf.n_encoder_layers,
@@ -97,14 +96,29 @@ def _load_model():
     ).to(_device)
 
     models_dir = res.models_dir(create=False)
-    ckpt = latest_checkpoint(models_dir)
-    if ckpt:
-        load_checkpoint(ckpt, m, device=_device)
-    else:
-        logger.warning("No model checkpoint found — using random weights")
 
-    m.eval()
-    _model = m
+    # First try merged fine‑tuned model
+    merged_path = models_dir / "dgb1_finetuned_merged.pt"
+    if merged_path.exists():
+        logger.info("Loading merged fine‑tuned model from %s", merged_path.name)
+        load_checkpoint(merged_path, model, device=_device)
+    else:
+        # Fallback: find the latest plain checkpoint (skip LoRA ones)
+        all_ckpts = sorted(models_dir.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+        plain_ckpt = None
+        for ckpt in all_ckpts:
+            if "lora" in ckpt.name.lower() or "finetune" in ckpt.name.lower():
+                continue
+            plain_ckpt = ckpt
+            break
+        if plain_ckpt:
+            logger.info("No merged checkpoint – loading latest plain checkpoint: %s", plain_ckpt.name)
+            load_checkpoint(plain_ckpt, model, device=_device)
+        else:
+            logger.warning("No suitable checkpoint found – using randomly initialised model")
+
+    model.eval()
+    _model = model
     return _model, _device
 
 def _get_engine():

@@ -1,0 +1,4 @@
+{"type": "pipeline", "stage": "finetune", "level": "INFO", "run_id": "20260526095454", "model_id": "dgb1", "timestamp": 1779778494.5592012, "message": "Finetune started  run_id=20260526095454"}
+{"type": "finetune", "stage": "finetune", "level": "INFO", "run_id": "20260526095454", "model_id": "dgb1", "timestamp": 1779778494.5793595, "message": "Finetune started  run_id=20260526095454", "epoch": 0, "step": 0}
+{"type": "error", "stage": "finetune", "level": "ERROR", "run_id": "20260526095454", "model_id": "dgb1", "timestamp": 1779778494.581147, "message": "Finetune error: Dataset entry 0 missing fields: {'input'}"}
+{"type": "error", "stage": "finetune", "level": "ERROR", "run_id": "20260526095454", "model_id": "dgb1", "timestamp": 1779778494.584526, "message": "Finetune failed: Dataset entry 0 missing fields: {'input'}"}

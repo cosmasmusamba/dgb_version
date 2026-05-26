@@ -1,0 +1,8 @@
+{"type": "pipeline", "stage": "finetune", "level": "INFO", "run_id": "20260526100146", "model_id": "dgb1", "timestamp": 1779778906.8106582, "message": "Finetune started  run_id=20260526100146"}
+{"type": "finetune", "stage": "finetune", "level": "INFO", "run_id": "20260526100146", "model_id": "dgb1", "timestamp": 1779778906.8250253, "message": "Finetune started  run_id=20260526100146", "epoch": 0, "step": 0}
+{"type": "finetune", "stage": "finetune", "level": "INFO", "run_id": "20260526100146", "model_id": "dgb1", "timestamp": 1779778906.8257353, "message": "Dataset validated", "epoch": 0, "step": 0}
+{"type": "finetune", "stage": "finetune", "level": "INFO", "run_id": "20260526100146", "model_id": "dgb1", "timestamp": 1779778909.4667928, "message": "finetune_loop_start", "epoch": 0, "step": 0, "start_batch_offset": 0}
+{"type": "finetune", "stage": "finetune", "level": "INFO", "run_id": "20260526100146", "model_id": "dgb1", "timestamp": 1779778909.4670522, "message": "epoch_start", "epoch": 0, "step": 0, "batch_size": 4, "pressure": "normal"}
+{"type": "error", "stage": "finetune", "level": "ERROR", "run_id": "20260526100146", "model_id": "dgb1", "timestamp": 1779778909.4689004, "message": "train_step failed: object of type 'NoneType' has no len()", "epoch": 0, "step": 0}
+{"type": "error", "stage": "finetune", "level": "ERROR", "run_id": "20260526100146", "model_id": "dgb1", "timestamp": 1779778909.4706764, "message": "Finetune error: object of type 'NoneType' has no len()"}
+{"type": "error", "stage": "finetune", "level": "ERROR", "run_id": "20260526100146", "model_id": "dgb1", "timestamp": 1779778909.4738789, "message": "Finetune failed: object of type 'NoneType' has no len()"}

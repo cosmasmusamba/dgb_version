@@ -1,0 +1,23 @@
+[
+  {
+    "epoch": 0,
+    "avg_loss": 0.1769789755344391,
+    "val_loss": null,
+    "duration_sec": 0.0,
+    "timestamp": 1779785489.25806
+  },
+  {
+    "epoch": 1,
+    "avg_loss": 0.19655732810497284,
+    "val_loss": null,
+    "duration_sec": 0.0,
+    "timestamp": 1779785498.303866
+  },
+  {
+    "epoch": 2,
+    "avg_loss": 0.2275731861591339,
+    "val_loss": null,
+    "duration_sec": 0.0,
+    "timestamp": 1779785506.4855757
+  }
+]

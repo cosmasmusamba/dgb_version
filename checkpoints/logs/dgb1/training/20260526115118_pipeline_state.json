@@ -1,0 +1,65 @@
+{
+  "model_id": "dgb1",
+  "run_id": "20260526115118",
+  "created_at": 1779706215.3077517,
+  "kv": {
+    "global_step": 9,
+    "batch_offset": 0,
+    "epoch": 3,
+    "last_checkpoint_path": "checkpoints\\dgb1\\models\\20260526115118_finetune_complete.pt",
+    "_checkpoint_note": "finetune_finished",
+    "_checkpoint_ts": 1779785506.8216562
+  },
+  "stages": {
+    "dataset_clean": {
+      "name": "dataset_clean",
+      "status": "completed",
+      "started_at": 1779707285.795221,
+      "completed_at": 1779707285.8270347,
+      "duration_sec": 0.031813621520996094,
+      "error": null,
+      "metadata": {
+        "raw_lines": 518,
+        "cleaned_lines": 233,
+        "files_processed": 1
+      },
+      "attempts": 2
+    },
+    "train_tokenizer": {
+      "name": "train_tokenizer",
+      "status": "completed",
+      "started_at": 1779707285.836384,
+      "completed_at": 1779707289.409363,
+      "duration_sec": 3.572978973388672,
+      "error": null,
+      "metadata": {
+        "vocab_size": 1756
+      },
+      "attempts": 1
+    },
+    "model_training": {
+      "name": "model_training",
+      "status": "completed",
+      "started_at": 1779708722.7320042,
+      "completed_at": 1779708724.7958376,
+      "duration_sec": 2.063833475112915,
+      "error": null,
+      "metadata": {
+        "best_loss": 0.0002
+      },
+      "attempts": 3
+    },
+    "finetune": {
+      "name": "finetune",
+      "status": "completed",
+      "started_at": 1779785478.0196645,
+      "completed_at": 1779785506.842031,
+      "duration_sec": 28.82236647605896,
+      "error": null,
+      "metadata": {
+        "run_id": "20260526115118"
+      },
+      "attempts": 6
+    }
+  }
+}

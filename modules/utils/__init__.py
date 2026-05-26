@@ -123,6 +123,7 @@ from modules.utils.streaming import (
     get_training_hub,
     reset_training_hub,
     sse_format,
+    stream_jsonl,
 )
 
 # ── Error handling ────────────────────────────────────────────────────────────
