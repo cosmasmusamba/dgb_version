@@ -26,10 +26,11 @@ from modules.utils.memory_manager import MemoryManager
 from modules.utils.safe_writer import safe_write
 from modules.utils.path_resolver import PathResolver
 from modules.utils.run_context import RunContext
+from configs.loader import get_config
 
 # Try to import your transformer model class; adapt name if different
 try:
-    from transformer.core.transformer_model import TransformerModel
+    from transformer.core.transformer_model import DGBTransformer
 except Exception:
     TransformerModel = None  # fallback; user must inject model via config if not present
 
@@ -96,11 +97,13 @@ class LoRAAdapter:
 
     def __init__(self, config: Dict[str, Any], run_ctx: Optional[RunContext] = None, model: Optional[nn.Module] = None):
         self.config = config
-        self.run_ctx = run_ctx or RunContext.default()
+        self.run_ctx = run_ctx or get_run_context()
         self.logger = UnifiedLogger(component="lora_adapter", run_ctx=self.run_ctx)
         self.metrics = MetricsLogger(namespace="finetune", run_ctx=self.run_ctx)
         self.memory = MemoryManager()
         self.path_resolver = PathResolver(self.run_ctx)
+        cfg = get_config()
+        self.path_resolver = PathResolver(model_id=cfg.project.model_id, cfg=cfg)
 
         # device selection
         self.device = torch.device(config.get("device", "cuda" if torch.cuda.is_available() else "cpu"))
@@ -151,23 +154,40 @@ class LoRAAdapter:
         })
 
     def _load_base_model(self, config: Dict[str, Any]) -> nn.Module:
-        """
-        Load base transformer model. If TransformerModel is not importable,
-        expect a path to a serialized model or a factory in config.
-        """
-        if TransformerModel is not None:
+        """Load base transformer model."""
+        if DGBTransformer is not None:
             model_cfg = config.get("model", {})
-            model = TransformerModel(model_cfg)
-            # optionally load pretrained weights if provided
+            from configs.loader import get_config
+            cfg = get_config()
+            
+            # Get tokenizer for vocab size
+            from tokenizer.dgb_tokenizer import DGBTokenizer
+            tokenizer = DGBTokenizer.from_pretrained(self.path_resolver.tokenizer_dir())
+            
+            model = DGBTransformer(
+                vocab_size=tokenizer.vocab_size,
+                d_model=cfg.transformer.d_model,
+                n_heads=cfg.transformer.n_heads,
+                n_encoder_layers=cfg.transformer.n_encoder_layers,
+                n_decoder_layers=cfg.transformer.n_decoder_layers,
+                d_ff=cfg.transformer.d_ff,
+                dropout=cfg.transformer.dropout,
+                max_seq_len=cfg.transformer.max_seq_len,
+                pad_idx=cfg.transformer.pad_idx,
+                tie_embeddings=cfg.transformer.tie_embeddings,
+            )
+            
+            # Load pretrained weights
             base_ckpt = config.get("finetune", {}).get("base_checkpoint")
             if base_ckpt:
-                resolved = self.path_resolver.resolve(base_ckpt)
-                if os.path.exists(resolved):
-                    state = torch.load(resolved, map_location="cpu")
-                    model.load_state_dict(state, strict=False)
+                from transformer.utils.model_helpers import load_checkpoint
+                import torch
+                resolved = self.path_resolver.models_dir() / base_ckpt
+                if resolved.exists():
+                    load_checkpoint(resolved, model, device=torch.device('cpu'))
             return model
         else:
-            raise RuntimeError("TransformerModel not found. Provide a model instance via LoRAAdapter(..., model=your_model)")
+            raise RuntimeError("DGBTransformer not found")
 
     def _inject_lora(self, module: nn.Module):
         """

@@ -184,6 +184,11 @@ class RunContext:
         
         return None
 
+    @classmethod
+    def default(cls) -> "RunContext":
+        """Return a default RunContext (for components without explicit context)."""
+        return get_run_context()
+
     # ------------------------------------------------------------------
 
     def __repr__(self) -> str:

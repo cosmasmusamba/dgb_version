@@ -1,3 +1,10 @@
-{"instruction": "What is a tonic-clonic seizure?", "response": "A tonic-clonic seizure, previously known as a grand mal seizure, involves two phases: the tonic phase where muscles stiffen, followed by the clonic phase with rhythmic jerking movements."}
-{"instruction": "Explain the difference between focal and generalized seizures", "response": "Focal seizures start in one area of the brain and may cause localized symptoms, while generalized seizures affect both hemispheres simultaneously and often involve loss of consciousness."}
-{"instruction": "What should you do if someone is having a seizure?", "response": "During a seizure, protect the person from injury by clearing the area, cushion their head, time the seizure, and after it ends, turn them on their side. Do not put anything in their mouth."}
+﻿{"instruction": "What is the capital of France?", "output": "The capital of France is Paris."}
+{"instruction": "What is 2+2?", "output": "2+2 equals 4."}
+{"instruction": "Who wrote Romeo and Juliet?", "output": "William Shakespeare wrote Romeo and Juliet."}
+{"instruction": "What is the largest ocean?", "output": "The Pacific Ocean is the largest ocean."}
+{"instruction": "What is the boiling point of water?", "output": "Water boils at 100 degrees Celsius at sea level."}
+{"instruction": "Who painted the Mona Lisa?", "output": "Leonardo da Vinci painted the Mona Lisa."}
+{"instruction": "What is the speed of light?", "output": "The speed of light is approximately 299,792,458 meters per second."}
+{"instruction": "What is the square root of 16?", "output": "The square root of 16 is 4."}
+{"instruction": "Who discovered penicillin?", "output": "Alexander Fleming discovered penicillin."}
+{"instruction": "What is the tallest mountain?", "output": "Mount Everest is the tallest mountain above sea level."}
