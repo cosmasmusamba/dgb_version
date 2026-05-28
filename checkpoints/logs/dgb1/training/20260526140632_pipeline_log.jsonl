@@ -1,0 +1,5 @@
+{"type": "pipeline", "stage": "pipeline", "level": "INFO", "run_id": "20260526140632", "model_id": "dgb1", "timestamp": 1779793592.7479, "message": "Pipeline started  run_id=20260526140632"}
+{"type": "dataset", "stage": "dataset_clean", "level": "INFO", "run_id": "20260526140632", "model_id": "dgb1", "timestamp": 1779800495.100419, "message": "Dataset cleaning complete", "raw_lines": 1106534538, "cleaned_lines": 403641191, "removed_pct": 63.52}
+{"type": "tokenizer", "stage": "train_tokenizer", "level": "INFO", "run_id": "20260526140632", "model_id": "dgb1", "timestamp": 1779941465.8569689, "message": "Tokenizer training complete", "vocab_size": 8000, "merges": 7000}
+{"type": "pipeline", "stage": "model_training", "level": "INFO", "run_id": "20260526140632", "model_id": "dgb1", "timestamp": 1779941474.2792115, "message": "Training complete  best_loss=0.0002  total_steps=1770"}
+{"type": "pipeline", "stage": "pipeline", "level": "INFO", "run_id": "20260526140632", "model_id": "dgb1", "timestamp": 1779941474.360819, "message": "Pipeline finished in 147881.6s  status=ok"}

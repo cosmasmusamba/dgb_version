@@ -1,0 +1,46 @@
+{
+  "model_id": "dgb1",
+  "run_id": "20260526140632",
+  "created_at": 1779793592.747518,
+  "kv": {},
+  "stages": {
+    "dataset_clean": {
+      "name": "dataset_clean",
+      "status": "completed",
+      "started_at": 1779793592.748005,
+      "completed_at": 1779800495.1006203,
+      "duration_sec": 6902.352615356445,
+      "error": null,
+      "metadata": {
+        "raw_lines": 1106534538,
+        "cleaned_lines": 403641191,
+        "files_processed": 71533
+      },
+      "attempts": 1
+    },
+    "train_tokenizer": {
+      "name": "train_tokenizer",
+      "status": "completed",
+      "started_at": 1779800495.1450973,
+      "completed_at": 1779941465.8598778,
+      "duration_sec": 140970.71478056908,
+      "error": null,
+      "metadata": {
+        "vocab_size": 8000
+      },
+      "attempts": 1
+    },
+    "model_training": {
+      "name": "model_training",
+      "status": "completed",
+      "started_at": 1779941465.9709558,
+      "completed_at": 1779941474.3492086,
+      "duration_sec": 8.378252744674683,
+      "error": null,
+      "metadata": {
+        "best_loss": 0.0002
+      },
+      "attempts": 1
+    }
+  }
+}
