@@ -91,8 +91,17 @@ def _make_token(
 ) -> str:
     if not _HAS_JOSE:
         return f"dev-token-{sub}-{role}"
-    exp     = datetime.now(timezone.utc) + ttl
-    payload = {"sub": sub, "role": role, "type": type, "exp": exp.timestamp()}
+    exp = datetime.now(timezone.utc) + ttl
+    # Build a clean dict – no extra keys
+    payload = {
+        "sub": str(sub),
+        "role": str(role),
+        "type": str(type),
+        "exp": int(exp.timestamp())   # integer, not float
+    }
+    # Ensure no 'iss' key is present
+    payload.pop("iss", None)
+    logger.debug(f"Creating token for {sub} with payload keys: {list(payload.keys())}")
     return jwt.encode(payload, _secret(), algorithm=JWT_ALGORITHM)
 
 
