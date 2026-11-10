@@ -117,3 +117,60 @@ def test_rate_limiter():
     from modules.utils.error_handler import RateLimitError
     with pytest.raises(RateLimitError):
         rl.check("test_key")
+
+
+def test_auth_requires_secret_and_jwt_backend(monkeypatch):
+    from api_manager.auth import api_security as security
+
+    monkeypatch.delenv("DGB_SECRET_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="DGB_SECRET_KEY is required"):
+        security._secret()
+
+    monkeypatch.setattr(security, "_HAS_JOSE", False, raising=False)
+    monkeypatch.setattr(security, "_pwd_ctx", None, raising=False)
+    with pytest.raises(RuntimeError, match="JWT authentication backend is unavailable"):
+        security._require_jwt_backend()
+
+
+def test_admin_health_requires_auth():
+    from fastapi.testclient import TestClient
+    from api_manager.app import create_app
+
+    app = create_app()
+    client = TestClient(app)
+    response = client.get("/v1/admin/health")
+    assert response.status_code in (401, 403)
+
+
+def test_expired_refresh_token_is_rejected():
+    import time
+    from datetime import datetime, timedelta, timezone
+
+    from jose import jwt
+
+    from api_manager.auth import api_security as security
+    from modules.utils.error_handler import AuthError
+
+    expired_payload = {
+        "sub": "demo-user",
+        "role": "user",
+        "type": "refresh",
+        "exp": int((datetime.now(timezone.utc) - timedelta(minutes=1)).timestamp()),
+    }
+    expired = jwt.encode(expired_payload, security._secret(), algorithm="HS256")
+
+    try:
+        security.decode_token(expired)
+    except AuthError:
+        return
+    raise AssertionError("Expired refresh token should be rejected")
+
+
+def test_partial_bootstrap_admin_config_is_rejected(monkeypatch):
+    from api_manager.auth import api_security as security
+
+    monkeypatch.setenv("DGB_BOOTSTRAP_ADMIN_USERNAME", "admin")
+    monkeypatch.delenv("DGB_BOOTSTRAP_ADMIN_PASSWORD", raising=False)
+
+    with pytest.raises(RuntimeError, match="must be set together"):
+        security._bootstrap_users()

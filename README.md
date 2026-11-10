@@ -10,8 +10,16 @@ API, streaming — hand-built in PyTorch.
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Set secret key
-export DGB_SECRET_KEY=your-strong-secret
+# 2. Create a repo-root .env file with the required runtime values
+#    The app loads .env automatically from the project root.
+#    Example:
+#    DGB_SECRET_KEY=your-strong-secret
+#    DGB_BOOTSTRAP_ADMIN_USERNAME=admin
+#    DGB_BOOTSTRAP_ADMIN_PASSWORD=choose-a-strong-password
+#    Optional API keys:
+#    BRAVE_API_KEY=
+#    SERPAPI_KEY=
+#    TAVILY_KEY=
 
 # 3. Add Wikipedia dump files
 # Place .txt files in: datasets/dgb1/wk_raw/
@@ -39,12 +47,27 @@ python main_pipeline.py --force model_training  # re-run a stage
 ```
 
 ## Environment variables
+Create a root-level `.env` file in the repository. The application auto-loads it via `python-dotenv` when available.
+
+```env
+DGB_SECRET_KEY=your-strong-secret
+DGB_BOOTSTRAP_ADMIN_USERNAME=admin
+DGB_BOOTSTRAP_ADMIN_PASSWORD=choose-a-strong-password
+
+# Optional API keys
+BRAVE_API_KEY=
+SERPAPI_KEY=
+TAVILY_KEY=
 ```
-DGB_SECRET_KEY      JWT signing secret (required in production)
-BRAVE_API_KEY       Web search grounding (optional)
-DGB_RAW_DIR         Override dataset raw path
-DGB_MODELS_DIR      Override model checkpoint path
-```
+
+Required values:
+- `DGB_SECRET_KEY`: required JWT signing secret for API authentication.
+- `DGB_BOOTSTRAP_ADMIN_USERNAME`: bootstrap admin username used for first login.
+- `DGB_BOOTSTRAP_ADMIN_PASSWORD`: bootstrap admin password used for first login.
+
+Optional values:
+- `BRAVE_API_KEY`, `SERPAPI_KEY`, `TAVILY_KEY`: external search-provider credentials.
+- `DGB_RAW_DIR`, `DGB_MODELS_DIR`: optional overrides for local dataset/model paths.
 
 ## Architecture
 See docs/architecture.md for full module index and data flow.

@@ -28,7 +28,7 @@ from pydantic import BaseModel
 
 from configs.constants import (
     JWT_ALGORITHM, ACCESS_TOKEN_TTL_MIN, REFRESH_TOKEN_TTL_DAYS,
-    SECRET_KEY_ENV_VAR, _FALLBACK_SECRET_KEY, UserRole,
+    SECRET_KEY_ENV_VAR, UserRole,
 )
 from modules.utils.error_handler import AuthError, ForbiddenError
 
@@ -46,14 +46,19 @@ _pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto") if _HAS_JOSE else
 _oauth2  = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
-def _secret() -> str:
-    key = os.environ.get(SECRET_KEY_ENV_VAR, "")
-    if not key:
-        logger.warning(
-            "DGB_SECRET_KEY not set — using insecure fallback. "
-            "Set this env var in production."
+def _require_jwt_backend() -> None:
+    if not _HAS_JOSE or _pwd_ctx is None:
+        raise RuntimeError(
+            "JWT authentication backend is unavailable. Install python-jose[cryptography] and passlib[bcrypt] before starting the API."
         )
-        return _FALLBACK_SECRET_KEY
+
+
+def _secret() -> str:
+    key = os.environ.get(SECRET_KEY_ENV_VAR, "").strip()
+    if not key:
+        raise RuntimeError(
+            f"{SECRET_KEY_ENV_VAR} is required. Set a strong secret before starting the API."
+        )
     return key
 
 
@@ -72,14 +77,12 @@ class TokenPair(BaseModel):
 
 
 def hash_password(password: str) -> str:
-    if not _HAS_JOSE:
-        return password
+    _require_jwt_backend()
     return _pwd_ctx.hash(password)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    if not _HAS_JOSE:
-        return plain == hashed
+    _require_jwt_backend()
     return _pwd_ctx.verify(plain, hashed)
 
 
@@ -89,8 +92,7 @@ def _make_token(
     type: str,
     ttl:  timedelta,
 ) -> str:
-    if not _HAS_JOSE:
-        return f"dev-token-{sub}-{role}"
+    _require_jwt_backend()
     exp = datetime.now(timezone.utc) + ttl
     # Build a clean dict – no extra keys
     payload = {
@@ -112,16 +114,18 @@ def create_token_pair(sub: str, role: str = UserRole.USER) -> TokenPair:
 
 
 def decode_token(token: str) -> TokenData:
-    if not _HAS_JOSE:
-        return TokenData(sub="dev", role=UserRole.ADMIN)
+    _require_jwt_backend()
     try:
         payload = jwt.decode(token, _secret(), algorithms=[JWT_ALGORITHM])
-        return TokenData(
+        data = TokenData(
             sub=payload["sub"],
             role=payload.get("role", UserRole.USER),
             type=payload.get("type", "access"),
             exp=payload.get("exp"),
         )
+        if data.exp is not None and data.exp <= time.time():
+            raise AuthError("Token has expired")
+        return data
     except JWTError as exc:
         raise AuthError(f"Invalid token: {exc}")
 
@@ -163,20 +167,33 @@ def require_role(role: str):
     return _check
 
 
-# Simple in-memory user store for demo — replace with DB in production
-_USERS: dict = {
-    "admin": {
-        "hashed_password": hash_password("admin123") if _HAS_JOSE else "admin123",
-        "role": UserRole.ADMIN,
-    },
-    "user": {
-        "hashed_password": hash_password("user123") if _HAS_JOSE else "user123",
-        "role": UserRole.USER,
-    },
-}
+def _bootstrap_users() -> dict:
+    """Seed the user store only from explicit environment configuration."""
+    _require_jwt_backend()
+    users: dict = {}
+    admin_username = os.environ.get("DGB_BOOTSTRAP_ADMIN_USERNAME", "").strip()
+    admin_password = os.environ.get("DGB_BOOTSTRAP_ADMIN_PASSWORD", "").strip()
+
+    if admin_username or admin_password:
+        if not admin_username or not admin_password:
+            raise RuntimeError(
+                "DGB_BOOTSTRAP_ADMIN_USERNAME and DGB_BOOTSTRAP_ADMIN_PASSWORD must be set together. "
+                "Partial bootstrap admin configuration is not allowed."
+            )
+
+        users[admin_username] = {
+            "hashed_password": hash_password(admin_password),
+            "role": UserRole.ADMIN,
+        }
+    return users
+
+
+# Keep the in-memory store empty by default unless bootstrap creds are supplied
+_USERS: dict = _bootstrap_users()
 
 
 def authenticate_user(username: str, password: str) -> Optional[dict]:
+    _require_jwt_backend()
     user = _USERS.get(username)
     if not user:
         return None

@@ -7,6 +7,7 @@ CORS, lifespan (startup/shutdown), exception handlers, and static UI.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -20,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from configs.loader import get_config
 from modules.logging_config import configure_logging, LogStage
 from modules.utils.error_handler import DGBError
+from api_manager.auth.api_security import _require_jwt_backend, _secret
 from api_manager.middleware.rate_limiter import SlidingWindowRateLimiter
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,24 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     cfg = get_config()
+    try:
+        _secret()
+        _require_jwt_backend()
+    except RuntimeError as exc:
+        raise RuntimeError(f"Authentication is not configured: {exc}") from exc
+
+    if os.getenv("DGB_REQUIRE_MODEL_ON_STARTUP", "0").lower() in {"1", "true", "yes"}:
+        try:
+            from modules.utils.path_resolver import init_path_resolver
+            res = init_path_resolver(cfg.project.model_id, cfg)
+            if not any(res.models_dir(create=False).glob("*.pt")):
+                raise RuntimeError("DGB_REQUIRE_MODEL_ON_STARTUP is enabled but no model checkpoint exists")
+            if not any(res.tokenizer_dir(create=False).glob("*vocabulary.json")):
+                raise RuntimeError("DGB_REQUIRE_MODEL_ON_STARTUP is enabled but no tokenizer checkpoint exists")
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"Startup model validation failed: {exc}") from exc
 
     app = FastAPI(
         title=f"{cfg.project.name} AI Platform",
@@ -75,9 +95,13 @@ def create_app() -> FastAPI:
     )
 
     # ── CORS ──────────────────────────────────────────────────────────
+    allowed_origins = cfg.api.cors_origins or [
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=cfg.api.cors_origins or ["*"],
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=cfg.api.cors_methods,
         allow_headers=cfg.api.cors_headers,

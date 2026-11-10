@@ -97,13 +97,11 @@ def _load_model():
 
     models_dir = res.models_dir(create=False)
 
-    # First try merged fine‑tuned model
     merged_path = models_dir / "dgb1_finetuned_merged.pt"
     if merged_path.exists():
         logger.info("Loading merged fine‑tuned model from %s", merged_path.name)
         load_checkpoint(merged_path, model, device=_device)
     else:
-        # Fallback: find the latest plain checkpoint (skip LoRA ones)
         all_ckpts = sorted(models_dir.glob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
         plain_ckpt = None
         for ckpt in all_ckpts:
@@ -111,11 +109,12 @@ def _load_model():
                 continue
             plain_ckpt = ckpt
             break
-        if plain_ckpt:
-            logger.info("No merged checkpoint – loading latest plain checkpoint: %s", plain_ckpt.name)
-            load_checkpoint(plain_ckpt, model, device=_device)
-        else:
-            logger.warning("No suitable checkpoint found – using randomly initialised model")
+        if not plain_ckpt:
+            raise ModelInitError(
+                "No valid model checkpoint found. Train or restore a checkpoint before enabling inference."
+            )
+        logger.info("No merged checkpoint – loading latest plain checkpoint: %s", plain_ckpt.name)
+        load_checkpoint(plain_ckpt, model, device=_device)
 
     model.eval()
     _model = model
@@ -239,7 +238,10 @@ async def stream_generate(
 
 
 @router.post("/v1/chat/completions")
-async def openai_chat(req: ChatRequest):
+async def openai_chat(
+    req: ChatRequest,
+    user: TokenData = Depends(get_current_user),
+):
     """OpenAI-compatible /v1/chat/completions endpoint."""
     prompt = "\n".join(f"{m.role}: {m.content}" for m in req.messages)
     from inference.sampling.top_p_sampler import GenerationConfig
@@ -275,7 +277,10 @@ async def openai_chat(req: ChatRequest):
 
 
 @router.post("/v1/chat/grounded")
-async def grounded_chat(req: GroundedRequest):
+async def grounded_chat(
+    req: GroundedRequest,
+    user: TokenData = Depends(get_current_user),
+):
     """
     Web-search grounded chat. Retrieves live sources, injects them as
     context, generates a response, and emits SSE:
@@ -326,7 +331,10 @@ async def grounded_chat(req: GroundedRequest):
 
 
 @router.post("/v1/tokenizer/encode", response_model=TokenizeResponse)
-async def tokenize(req: TokenizeRequest):
+async def tokenize(
+    req: TokenizeRequest,
+    user: TokenData = Depends(get_current_user),
+):
     try:
         tok    = _load_tokenizer()
         tokens = tok.encode(req.text, add_special_tokens=req.add_special_tokens)
@@ -336,7 +344,7 @@ async def tokenize(req: TokenizeRequest):
 
 
 @router.get("/v1/tokenizer/vocab_size")
-async def vocab_size():
+async def vocab_size(user: TokenData = Depends(get_current_user)):
     try:
         tok = _load_tokenizer()
         return {"vocab_size": tok.vocab_size, "trained": tok.is_trained}

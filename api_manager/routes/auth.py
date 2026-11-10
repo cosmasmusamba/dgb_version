@@ -5,7 +5,7 @@ Authentication endpoints.
 
 POST /auth/login    — username+password → token pair
 POST /auth/refresh  — refresh token → new access token
-POST /auth/register — create new user (admin only in production)
+POST /auth/register — disabled by policy; use secure admin bootstrap
 GET  /auth/me       — current user info
 """
 from __future__ import annotations
@@ -18,9 +18,8 @@ from pydantic import BaseModel
 
 from api_manager.auth.api_security import (
     authenticate_user, create_token_pair, decode_token,
-    get_current_user, TokenData, TokenPair, _USERS, hash_password,
+    get_current_user, TokenData, TokenPair,
 )
-from configs.constants import UserRole
 from modules.utils.error_handler import AuthError
 
 logger = logging.getLogger(__name__)
@@ -34,7 +33,7 @@ class RefreshRequest(BaseModel):
 class RegisterRequest(BaseModel):
     username: str
     password: str
-    role:     str = UserRole.USER
+    role:     str | None = None
 
 
 @router.post("/login", response_model=TokenPair)
@@ -68,14 +67,10 @@ async def me(user: TokenData = Depends(get_current_user)):
     return {"sub": user.sub, "role": user.role}
 
 
-@router.post("/register", status_code=201)
+@router.post("/register", status_code=403)
 async def register(req: RegisterRequest):
-    """Register a new user. Restrict to admin-only in production."""
-    if req.username in _USERS:
-        raise HTTPException(status_code=409, detail="Username already exists")
-    _USERS[req.username] = {
-        "hashed_password": hash_password(req.password),
-        "role": req.role,
-    }
-    logger.info("New user registered: %s  role=%s", req.username, req.role)
-    return {"username": req.username, "role": req.role}
+    """Public self-registration is disabled to prevent privilege escalation."""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Self-registration is disabled. Provision users via secure admin bootstrap or admin-only tooling.",
+    )

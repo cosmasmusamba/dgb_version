@@ -35,6 +35,15 @@ class CommonCrawlExtractor(BaseExtractor):
         self._max_warcs  = cfg.extra.get("max_warcs", 10)
         self._min_chars  = cfg.extra.get("min_chars", 200)
         self._blocklist  = set(cfg.extra.get("domain_blocklist", []))
+        self._accepted_records = 0
+        self._discarded_records = 0
+
+    def _drop_record(self, reason: str, detail: str = "") -> None:
+        self._discarded_records += 1
+        if detail:
+            logger.debug("CommonCrawlExtractor dropped record: reason=%s detail=%s", reason, detail)
+        else:
+            logger.debug("CommonCrawlExtractor dropped record: reason=%s", reason)
 
     @classmethod
     def build(cls, cfg_dict: dict, checkpoint_mgr=None, quota_mgr=None) -> "CommonCrawlExtractor":
@@ -81,14 +90,23 @@ class CommonCrawlExtractor(BaseExtractor):
                 seen += 1
                 if doc:
                     accepted += 1
+                    self._accepted_records += 1
                     self._update_checkpoint(url, byte_pos, accepted, seen)
                     yield doc
+
+        if seen:
+            logger.info(
+                "CommonCrawlExtractor summary: url=%s accepted=%d discarded=%d seen=%d",
+                url, accepted, self._discarded_records, seen,
+            )
 
     def _parse_warc_record(self, record: bytes, source_url: str) -> Optional[Document]:
         try:
             # Split headers from body
             header_end = record.find(b"\r\n\r\n")
-            if header_end < 0: return None
+            if header_end < 0:
+                self._drop_record("missing_headers")
+                return None
             headers_raw = record[:header_end].decode("utf-8", errors="replace")
             body = record[header_end+4:]
             headers = {}
@@ -96,23 +114,26 @@ class CommonCrawlExtractor(BaseExtractor):
                 if ": " in line:
                     k, v = line.split(": ", 1)
                     headers[k.lower()] = v.strip()
-            warc_type = headers.get("warc-type","")
-            if warc_type != "response": return None
-            target_uri = headers.get("warc-target-uri","")
-            # Extract domain for blocklist check
+            warc_type = headers.get("warc-type", "")
+            if warc_type != "response":
+                self._drop_record("warc_type", warc_type or "missing")
+                return None
+            target_uri = headers.get("warc-target-uri", "")
             m = re.search(r"https?://([^/]+)", target_uri)
-            if m and m.group(1) in self._blocklist: return None
-            # Decompress if needed
+            if m and m.group(1) in self._blocklist:
+                self._drop_record("domain_blocklisted", m.group(1))
+                return None
             try:
                 content = gzip.decompress(body)
             except Exception:
                 content = body
             text_raw = content.decode("utf-8", errors="replace")
-            # Strip HTTP response headers
             http_end = text_raw.find("\r\n\r\n")
             html = text_raw[http_end+4:] if http_end >= 0 else text_raw
             text = _extract_text(html)
-            if len(text) < self._min_chars: return None
+            if len(text) < self._min_chars:
+                self._drop_record("too_short", f"len={len(text)} min={self._min_chars}")
+                return None
             doc = self._make_doc(
                 text=text, url=target_uri,
                 metadata={"warc_type": warc_type, "warc_date": headers.get("warc-date",""),
@@ -122,4 +143,6 @@ class CommonCrawlExtractor(BaseExtractor):
             )
             doc.stage = ProcessingStage.EXTRACTED
             return doc
-        except Exception: return None
+        except Exception as exc:
+            self._drop_record("parse_error", str(exc))
+            return None

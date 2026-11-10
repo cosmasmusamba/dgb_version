@@ -14,8 +14,19 @@ import json, logging, os, re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover
+    load_dotenv = None
+
 from configs.constants import DEFAULT_MODEL_ID, RUNTIME_CONFIG_PATH, DeviceType
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if load_dotenv is not None:
+    load_dotenv(REPO_ROOT / ".env", override=False)
 
 logger = logging.getLogger(__name__)
 

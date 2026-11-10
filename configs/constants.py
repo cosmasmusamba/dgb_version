@@ -74,7 +74,6 @@ ACCESS_TOKEN_TTL_MIN: Final[int] = 30
 REFRESH_TOKEN_TTL_DAYS: Final[int] = 7
 JWT_ALGORITHM: Final[str] = "HS256"
 SECRET_KEY_ENV_VAR: Final[str] = "DGB_SECRET_KEY"
-_FALLBACK_SECRET_KEY: Final[str] = "dgb-dev-secret-change-in-production-please"
 MEM_WARN_GB: Final[float] = 1.0
 MEM_ERROR_GB: Final[float] = 0.25
 GC_INTERVAL: Final[int] = 100

@@ -38,7 +38,7 @@ def admin_only(user: TokenData = Depends(require_role(UserRole.ADMIN))) -> Token
 # ── Health ─────────────────────────────────────────────────────────────────────
 
 @router.get("/health")
-async def health():
+async def health(_: TokenData = Depends(admin_only)):
     from configs.loader import get_config
     cfg = get_config()
     return {
