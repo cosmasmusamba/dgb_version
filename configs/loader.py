@@ -68,6 +68,17 @@ class TransformerConfig(BaseModel):
     dropout: float = 0.1; max_seq_len: int = 512; pad_idx: int = 0
     tie_embeddings: bool = True; layer_norm_eps: float = 1e-6
     attention_type: str = "scaled_dot_product"
+    # batch2: decoder-only architecture. "encoder_decoder" is the legacy, leak-trained model.
+    architecture: str = "decoder_only"
+    n_layers: int = 6
+    rope_theta: float = 10_000.0
+
+    @field_validator("architecture")
+    @classmethod
+    def valid_architecture(cls, v):
+        if v not in {"decoder_only", "encoder_decoder"}:
+            raise ValueError("architecture must be 'decoder_only' or 'encoder_decoder'")
+        return v
 
     @model_validator(mode="after")
     def heads_divide_d_model(self):

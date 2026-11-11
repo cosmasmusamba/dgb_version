@@ -79,7 +79,10 @@ class InferenceEngine:
         try:
             dummy = torch.tensor([[2, 3, 1, 0]], dtype=torch.long, device=self._device)
             with torch.no_grad():
-                _ = self._model(dummy, dummy)
+                if getattr(self._model, "architecture", "encoder_decoder") == "decoder_only":
+                    _ = self._model(dummy)
+                else:
+                    _ = self._model(dummy, dummy)
             logger.info("InferenceEngine: warm-up complete")
         except Exception as exc:
             logger.warning("Warm-up failed: %s", exc)
@@ -113,7 +116,7 @@ class InferenceEngine:
             src = torch.tensor([ids], dtype=torch.long, device=self._device)
             src_mask = self._model.make_padding_mask(src)
 
-            if use_beam:
+            if use_beam and getattr(self._model, "architecture", "encoder_decoder") != "decoder_only":
                 bc   = beam_cfg or BeamSearchConfig()
                 hyps = self._beam_dec.decode(src, bc, src_mask)
                 best = hyps[0][0] if hyps and hyps[0] else None

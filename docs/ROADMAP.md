@@ -1,6 +1,27 @@
 # DGB AI — ROADMAP (planner: Claude · implementer: Copilot · owner/runner: Xosmas)
 
-Last reviewed against commit `0d20019` (2026-11-10).
+Last updated 2026-11-11: T0.1 done; batch2 ships T0.2 + T0.3. Reviewed against `0d20019` / `6ff5720`.
+
+**Status board**
+- T0.1 leak proof ........ DONE (Copilot run: loss 1.647 -> 0.024 on random tokens in 300 steps;
+  independent run: 1.74 -> 0.003, and editing later src tokens moved earlier logits by 0.64)
+- T0.2 decoder-only model  SHIPPED in batch2 (`DGBGPT`, `build_model`, `_forward_loss`, checkpoint architecture guard)
+- T0.3 sanity suite ....... SHIPPED in batch2 (`tests/unit/test_gpt_model.py`)
+- Verified end to end (Claude's sandbox, real PyTorch, repo tokenizer + `StreamingTextDataset` + `_eval_pass`):
+  2M-param DGBGPT, 700 steps on 3,000 lines of real English: loss 9.02 (chance) -> train 3.29,
+  HELD-OUT 3.71 (perplexity 41). The old leaked setup reported 0.0002, which no real model can reach.
+  Rerun it yourself: `python batch2\e2e_smoke.py . %TEMP%\dgb_e2e 300`
+- T0.4 eval harness ....... next (note: `_eval_pass` returns 0.0 when it produces no batches,
+  e.g. a validation file with only short lines; it must return None or raise instead)
+- T1.1 tokenizer .......... PRIORITY: `decode()` drops all whitespace ("Thefunctionreturns...") because the
+  tokenizer has no space marker, and non-ASCII/emoji become UNK (3 of 13 tokens in a test string).
+  Users would see unspaced text from the API, and code indentation cannot round-trip.
+- Known gaps after batch2: `finetune/` (LoRA) still feeds tgt==src, the same leak, so it is
+  not usable until ported in Phase 3; beam search is encoder-decoder only (decoder-only falls
+  back to greedy); no KV cache yet (T2.3); old leak-trained checkpoints are refused by the
+  architecture guard on purpose.
+- Note on a Copilot remark: `.view()` failing in the T0.1 test came from non-contiguous
+  test tensors (`ids[:, 1:]`), not from the training loop; the real loader builds contiguous tensors.
 
 ## 0. Where the project really stands (from reading the repo)
 
@@ -37,19 +58,21 @@ perplexity, then narrow fine-tuned skills. It will not match frontier models; do
 claim it does. Every phase ends with numbers in `docs/WORKLOG.md`.
 
 ## 1. Working agreement
-- Claude writes/updates task specs here and reviews real commits on GitHub (repo is public,
-  Claude can read it, cannot push). Copilot implements ONE task per session on a branch
-  `task/<id>-<name>`. Xosmas merges, runs cloud jobs, pastes logs.
-- After each task: Copilot appends to `docs/WORKLOG.md` and Xosmas tells Claude the commit
-  hash. Claude reviews the diff and posts the next spec.
+- Claude plans and ships each task as a patch zip (`dgb_batchN.zip`): extract in the project
+  root, run `patch_batchN.py --dry-run` (checks the environment, writes nothing), then apply,
+  then run the verify commands printed by the script. Overwritten files are backed up.
+- Copilot is optional: use it for follow-up edits inside the repo. If used, ONE task per
+  session on a branch `task/<id>-<name>`, and it logs to `docs/WORKLOG.md`.
+- Xosmas commits, runs cloud jobs and pastes outputs. Claude reads the pushed code on GitHub
+  (repo is public, read-only) and reviews real diffs, then ships the next batch.
 - Local runs: tiny configs only (CPU, no GPU, ~3 GB RAM free). Real training: cloud GPU.
 
 ---
 
 ## PHASE 0 — Make training honest (local, CPU, tiny configs)
 
-### T0.1 Prove the leak (tests only; do NOT fix anything yet)
-Add `tests/unit/test_training_objective.py`:
+### T0.1 Prove the leak (tests only; do NOT fix anything yet) — shipped in batch1
+Adds `tests/unit/test_training_objective.py` (two xfail tests, details below):
 - Build a tiny `DGBTransformer` (vocab 50, d_model 32, 2 heads, 1 encoder + 1 decoder layer, dropout 0).
 - Data: random token ids in `[6, 50)` (above the special tokens), length 32, paired exactly
   like `StreamingTextDataset` (`src=ids[:-1]`, `tgt=ids[1:]`). Random tokens are unpredictable,

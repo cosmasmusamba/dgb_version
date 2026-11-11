@@ -27,7 +27,7 @@ class DGBTrainer:
         from modules.utils.metrics_logger import MetricsLogger
         from modules.utils.progress_tracking import ProgressTracker
         from transformer.core.transformer_model import DGBTransformer
-        from transformer.utils.model_helpers import resolve_device, log_model_info
+        from transformer.utils.model_helpers import resolve_device, log_model_info, build_model
         from trainer.core.checkpoint_manager import CheckpointManager
         from trainer.core.training_loop import TrainingConfig, run_training_loop
         from tokenizer.dgb_tokenizer import DGBTokenizer
@@ -40,13 +40,8 @@ class DGBTrainer:
         device    = resolve_device(cfg.training.device)
         tf        = cfg.transformer
 
-        model = DGBTransformer(
-            vocab_size=tokenizer.vocab_size, d_model=tf.d_model, n_heads=tf.n_heads,
-            n_encoder_layers=tf.n_encoder_layers, n_decoder_layers=tf.n_decoder_layers,
-            d_ff=tf.d_ff, dropout=tf.dropout, max_seq_len=tf.max_seq_len,
-            pad_idx=tf.pad_idx, tie_embeddings=tf.tie_embeddings,
-        ).to(device)
-        log_model_info(model, "DGBTransformer")
+        model = build_model(tf, tokenizer.vocab_size).to(device)
+        log_model_info(model, type(model).__name__)
 
         train_cfg = TrainingConfig.from_cfg(cfg)
         profile   = get_system_profile()

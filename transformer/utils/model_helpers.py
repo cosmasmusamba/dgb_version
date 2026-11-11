@@ -131,6 +131,8 @@ def save_checkpoint(
         "step":            step,
         "loss":            loss,
         "model_state":     model.state_dict(),
+        "architecture":    getattr(model, "architecture", "encoder_decoder"),
+        "model_config":    getattr(model, "config", None),
         "optimizer_state": optimizer.state_dict() if optimizer else None,
         **(extra or {}),
     }
@@ -173,6 +175,7 @@ def load_checkpoint(
     map_loc = device or torch.device("cpu")
     payload = torch.load(path, map_location=map_loc, weights_only=False)
 
+    _check_architecture(payload, model, path)
     model.load_state_dict(payload["model_state"], strict=strict)
     if optimizer and payload.get("optimizer_state"):
         optimizer.load_state_dict(payload["optimizer_state"])
@@ -232,21 +235,10 @@ def load_model(checkpoint_path: str, device: torch.device, vocab_size: int = Non
         logger.info(f"Using vocab_size={vocab_size}")
     
     # Create model with all required parameters
-    model = DGBTransformer(
-        vocab_size=vocab_size,
-        d_model=transformer_cfg.d_model,
-        n_heads=transformer_cfg.n_heads,
-        n_encoder_layers=transformer_cfg.n_encoder_layers,
-        n_decoder_layers=transformer_cfg.n_decoder_layers,
-        d_ff=transformer_cfg.d_ff,
-        dropout=transformer_cfg.dropout,
-        max_seq_len=transformer_cfg.max_seq_len,
-        pad_idx=transformer_cfg.pad_idx,
-        tie_embeddings=transformer_cfg.tie_embeddings,
-        layer_norm_eps=transformer_cfg.layer_norm_eps,
-    )
+    model = build_model(transformer_cfg, vocab_size)
     
     # Load state dict
+    _check_architecture(checkpoint if "model_state" in checkpoint else {}, model, checkpoint_path)
     model.load_state_dict(model_state)
     
     model.to(device)
@@ -254,3 +246,42 @@ def load_model(checkpoint_path: str, device: torch.device, vocab_size: int = Non
     logger.info(f"Model loaded from {Path(checkpoint_path).name}")
     
     return model
+
+
+# --- batch2 (T0.2): architecture-aware model factory and checkpoint guard ----------------
+def build_model(tf_cfg, vocab_size: int, dropout: Optional[float] = None):
+    """Build the model chosen by cfg.transformer.architecture ("decoder_only" | "encoder_decoder")."""
+    drop = tf_cfg.dropout if dropout is None else dropout
+    arch = getattr(tf_cfg, "architecture", "encoder_decoder")
+    if arch == "decoder_only":
+        from transformer.core.gpt_model import DGBGPT
+        return DGBGPT(
+            vocab_size=vocab_size, d_model=tf_cfg.d_model, n_heads=tf_cfg.n_heads,
+            n_layers=tf_cfg.n_layers, d_ff=tf_cfg.d_ff, dropout=drop,
+            max_seq_len=tf_cfg.max_seq_len, pad_idx=tf_cfg.pad_idx,
+            tie_embeddings=tf_cfg.tie_embeddings, layer_norm_eps=tf_cfg.layer_norm_eps,
+            rope_theta=getattr(tf_cfg, "rope_theta", 10_000.0),
+        )
+    if arch == "encoder_decoder":
+        return DGBTransformer(
+            vocab_size=vocab_size, d_model=tf_cfg.d_model, n_heads=tf_cfg.n_heads,
+            n_encoder_layers=tf_cfg.n_encoder_layers, n_decoder_layers=tf_cfg.n_decoder_layers,
+            d_ff=tf_cfg.d_ff, dropout=drop, max_seq_len=tf_cfg.max_seq_len,
+            pad_idx=tf_cfg.pad_idx, tie_embeddings=tf_cfg.tie_embeddings,
+            layer_norm_eps=tf_cfg.layer_norm_eps,
+        )
+    raise ModelInitError(f"Unknown transformer.architecture: {arch!r}")
+
+
+def _check_architecture(payload: dict, model, path) -> None:
+    """Refuse to load a checkpoint into a model of a different architecture."""
+    if not payload:
+        return
+    ckpt_arch = payload.get("architecture", "encoder_decoder")   # checkpoints before batch2
+    model_arch = getattr(model, "architecture", "encoder_decoder")
+    if ckpt_arch != model_arch:
+        raise CheckpointError(
+            f"Checkpoint {Path(path).name} was saved by a '{ckpt_arch}' model but the current "
+            f"model is '{model_arch}'. Set transformer.architecture in configs/runtime_config.json "
+            f"to match, or train a new checkpoint."
+        )

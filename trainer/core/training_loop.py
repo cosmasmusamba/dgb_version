@@ -171,6 +171,23 @@ def split_cleaned_files(
     return shuffled[n_val:], shuffled[:n_val]
 
 
+def _forward_loss(model, src, tgt, criterion):
+    """
+    Architecture-aware forward pass + loss (batch2).
+
+    decoder_only: logits = model(src) and the loss compares them with tgt (= src shifted by one),
+                  so the model never sees the token it must predict.
+    encoder_decoder (legacy): the old call, which leaks tgt into the decoder input.
+    """
+    if getattr(model, "architecture", "encoder_decoder") == "decoder_only":
+        logits = model(src)
+    else:
+        logits = model(src, tgt,
+                       src_mask=model.make_padding_mask(src),
+                       tgt_mask=model.make_padding_mask(tgt))
+    return criterion(logits.reshape(-1, logits.size(-1)), tgt.reshape(-1))
+
+
 def _eval_pass(model, tokenizer, val_files, device, pad_idx, batch_size, num_workers):
     """Run a full pass over validation files, return avg val_loss."""
     if not val_files:
@@ -192,10 +209,7 @@ def _eval_pass(model, tokenizer, val_files, device, pad_idx, batch_size, num_wor
     with torch.no_grad():
         for src, tgt in loader:
             src, tgt = src.to(device), tgt.to(device)
-            src_mask = model.make_padding_mask(src)
-            tgt_mask = model.make_padding_mask(tgt)
-            logits   = model(src, tgt, src_mask=src_mask, tgt_mask=tgt_mask)
-            loss     = criterion(logits.view(-1, logits.size(-1)), tgt.view(-1))
+            loss = _forward_loss(model, src, tgt, criterion)
             total_loss += loss.item()
             n_batches  += 1
     model.train()
@@ -332,17 +346,12 @@ def run_training_loop(
 
             accum = resource_handle.grad_accum
             src, tgt = src.to(device), tgt.to(device)
-            src_mask = model.make_padding_mask(src)
-            tgt_mask = model.make_padding_mask(tgt)
-
             if scaler:
                 with torch.cuda.amp.autocast():
-                    logits = model(src, tgt, src_mask=src_mask, tgt_mask=tgt_mask)
-                    loss   = criterion(logits.view(-1, logits.size(-1)), tgt.view(-1)) / accum
+                    loss = _forward_loss(model, src, tgt, criterion) / accum
                 scaler.scale(loss).backward()
             else:
-                logits = model(src, tgt, src_mask=src_mask, tgt_mask=tgt_mask)
-                loss   = criterion(logits.view(-1, logits.size(-1)), tgt.view(-1)) / accum
+                loss = _forward_loss(model, src, tgt, criterion) / accum
                 loss.backward()
 
             loss_val    = loss.item() * accum

@@ -145,6 +145,20 @@ class StreamingSampler:
         Suitable for SSE streaming from the API.
         """
         src      = prompt_ids.to(self._device)
+        if getattr(self._model, "architecture", "encoder_decoder") == "decoder_only":
+            # decoder-only model: one token stream, no encoder (batch2)
+            ids = src
+            if ids.size(1) > 1 and ids[0, -1].item() == self._eos:
+                ids = ids[:, :-1]            # drop the EOS the tokenizer appends to prompts
+            for step in range(cfg.max_new_tokens):
+                ctx    = ids[:, -self._model.max_seq_len:]
+                logits = self._model(ctx)[:, -1, :]
+                next_id = self._sampler.sample(logits, cfg, prev_ids=ids)
+                ids = torch.cat([ids, next_id.unsqueeze(-1)], dim=1)
+                yield next_id.item(), self._tokenizer.decode([next_id.item()])
+                if next_id.item() == self._eos and step >= cfg.min_new_tokens:
+                    break
+            return
         src_mask = self._model.make_padding_mask(src)
         memory   = self._model.encode(src, src_mask)
 

@@ -138,7 +138,7 @@ def run_model_training(cfg, ctx: RunContext, res, unified_log, state: PipelineSt
         with LogStage("model_training"):
             from tokenizer.dgb_tokenizer import DGBTokenizer
             from transformer.core.transformer_model import DGBTransformer
-            from transformer.utils.model_helpers import resolve_device, log_model_info
+            from transformer.utils.model_helpers import resolve_device, log_model_info, build_model
             from trainer.core.checkpoint_manager import CheckpointManager
             from trainer.core.dataset_loader import StreamingTextDataset, build_streaming_loader
             from trainer.core.training_loop import TrainingConfig, run_training_loop
@@ -159,20 +159,8 @@ def run_model_training(cfg, ctx: RunContext, res, unified_log, state: PipelineSt
 
             # Build model
             tf    = cfg.transformer
-            model = DGBTransformer(
-                vocab_size=tokenizer.vocab_size,
-                d_model=tf.d_model,
-                n_heads=tf.n_heads,
-                n_encoder_layers=tf.n_encoder_layers,
-                n_decoder_layers=tf.n_decoder_layers,
-                d_ff=tf.d_ff,
-                dropout=tf.dropout,
-                max_seq_len=tf.max_seq_len,
-                pad_idx=tf.pad_idx,
-                tie_embeddings=tf.tie_embeddings,
-                layer_norm_eps=tf.layer_norm_eps,
-            ).to(device)
-            log_model_info(model, "DGBTransformer")
+            model = build_model(tf, tokenizer.vocab_size).to(device)
+            log_model_info(model, type(model).__name__)
 
             # Training config — all values from config (B4, T4, T6 fixed)
             train_cfg = TrainingConfig.from_cfg(cfg)

@@ -73,7 +73,7 @@ def _load_model():
 
     from configs.loader import get_config
     from transformer.core.transformer_model import DGBTransformer
-    from transformer.utils.model_helpers import resolve_device, load_checkpoint, latest_checkpoint
+    from transformer.utils.model_helpers import resolve_device, load_checkpoint, latest_checkpoint, build_model
 
     cfg = get_config()
     tf = cfg.transformer
@@ -82,18 +82,7 @@ def _load_model():
 
     tokenizer = _load_tokenizer()
 
-    model = DGBTransformer(
-        vocab_size=tokenizer.vocab_size,
-        d_model=tf.d_model,
-        n_heads=tf.n_heads,
-        n_encoder_layers=tf.n_encoder_layers,
-        n_decoder_layers=tf.n_decoder_layers,
-        d_ff=tf.d_ff,
-        dropout=0.0,
-        max_seq_len=tf.max_seq_len,
-        pad_idx=tf.pad_idx,
-        tie_embeddings=tf.tie_embeddings,
-    ).to(_device)
+    model = build_model(tf, tokenizer.vocab_size, dropout=0.0).to(_device)
 
     models_dir = res.models_dir(create=False)
 
