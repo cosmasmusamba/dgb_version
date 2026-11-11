@@ -1,21 +1,27 @@
 # DGB AI — ROADMAP (planner: Claude · implementer: Copilot · owner/runner: Xosmas)
 
-Last updated 2026-11-11: T0.1 done; batch2 ships T0.2 + T0.3. Reviewed against `0d20019` / `6ff5720`.
+Last updated 2026-11-11: T0.1-T0.3 merged to main (`9c253ac`); batch3 ships T1.1 (byte-level tokenizer) + T0.4 (eval script).
 
 **Status board**
 - T0.1 leak proof ........ DONE (Copilot run: loss 1.647 -> 0.024 on random tokens in 300 steps;
   independent run: 1.74 -> 0.003, and editing later src tokens moved earlier logits by 0.64)
-- T0.2 decoder-only model  SHIPPED in batch2 (`DGBGPT`, `build_model`, `_forward_loss`, checkpoint architecture guard)
-- T0.3 sanity suite ....... SHIPPED in batch2 (`tests/unit/test_gpt_model.py`)
+- T0.2 decoder-only model  MERGED (batch2, `9c253ac`) (`DGBGPT`, `build_model`, `_forward_loss`, checkpoint architecture guard)
+- T0.3 sanity suite ....... MERGED (batch2) (`tests/unit/test_gpt_model.py`)
 - Verified end to end (Claude's sandbox, real PyTorch, repo tokenizer + `StreamingTextDataset` + `_eval_pass`):
   2M-param DGBGPT, 700 steps on 3,000 lines of real English: loss 9.02 (chance) -> train 3.29,
   HELD-OUT 3.71 (perplexity 41). The old leaked setup reported 0.0002, which no real model can reach.
-  Rerun it yourself: `python batch2\e2e_smoke.py . %TEMP%\dgb_e2e 300`
-- T0.4 eval harness ....... next (note: `_eval_pass` returns 0.0 when it produces no batches,
-  e.g. a validation file with only short lines; it must return None or raise instead)
-- T1.1 tokenizer .......... PRIORITY: `decode()` drops all whitespace ("Thefunctionreturns...") because the
-  tokenizer has no space marker, and non-ASCII/emoji become UNK (3 of 13 tokens in a test string).
-  Users would see unspaced text from the API, and code indentation cannot round-trip.
+  On the owner's PC (2M params, 300 steps): loss 9.04 -> 4.04, held-out val 4.31 (perplexity 75).
+- T0.4 eval harness ....... SHIPPED in batch3 as `tools/eval_model.py` (perplexity + bits-per-byte + fixed prompts,
+  JSON report in `eval_reports/`). Still open: hook into checkpoint saving; `_eval_pass` returns 0.0
+  when it produces no batches (must raise or return None).
+- T1.1 tokenizer .......... SHIPPED in batch3 (`tokenizer/byte_bpe.py`, `tools/train_byte_bpe.py`): byte-level BPE,
+  exact round trip, zero UNK, same special ids. `DGBTokenizer.from_pretrained` returns it when
+  `byte_bpe.json` is in the tokenizer folder. Not done: speed profile vs the old tokenizer, vocab 32k
+  decision (config still says 8000), `main_train_tokenizer.py` is NOT wired to it and is already
+  broken on main (it calls `TokenizerTrainer(ctx=ctx)` / `.add_file` / `.build_and_save`, which
+  `tokenizer/core/trainer.py` does not have). Use `tools/train_byte_bpe.py` instead.
+  Known gap: streaming decodes one token at a time, so a multi-byte character split across tokens
+  shows as a replacement character until it completes (needs an incremental decoder).
 - Known gaps after batch2: `finetune/` (LoRA) still feeds tgt==src, the same leak, so it is
   not usable until ported in Phase 3; beam search is encoder-decoder only (decoder-only falls
   back to greedy); no KV cache yet (T2.3); old leak-trained checkpoints are refused by the
@@ -106,7 +112,7 @@ within 300 CPU steps; `pytest tests/unit -q` green; param count logged.
 
 ## PHASE 1 — Tokenizer and data for real training
 
-### T1.1 Tokenizer: profile, then rebuild
+### T1.1 Tokenizer: profile, then rebuild (core shipped in batch3, see status board)
 Profile `main_train_tokenizer.py` / `tokenizer/core` on a 50 MB sample and report where time
 goes. Then: byte-level BPE (no `<UNK>` possible), configurable vocab (default 32,000),
 pre-tokenize once into a unique-word frequency table and run merges with incremental pair-count
