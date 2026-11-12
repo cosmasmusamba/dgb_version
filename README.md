@@ -36,6 +36,13 @@ python main_api_server.py
 pytest tests/
 ```
 
+## Web portal
+
+The React user workspace and administrator console are in [ui/portal/README.md](ui/portal/README.md).
+Run the portal in development with `npm install` and `npm run dev` from `ui/portal`.
+For deployment, build it with `npm run build`; the API serves the built portal at `/ui/`.
+See [docs/DEVELOPMENT_RESPONSIBILITY_MATRIX.md](docs/DEVELOPMENT_RESPONSIBILITY_MATRIX.md) for ownership boundaries and integration procedures.
+
 ## Individual stages
 ```bash
 python main_dataset_clean.py          # clean raw text
