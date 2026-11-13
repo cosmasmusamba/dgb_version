@@ -14,6 +14,7 @@ import argparse
 import re
 import sys
 import time
+import zlib
 from collections import Counter
 from pathlib import Path
 
@@ -32,7 +33,8 @@ def main() -> int:
     ap.add_argument("--out", help="output folder (default: paths.tokenizer_dir from config)")
     ap.add_argument("--vocab-size", type=int, help="default: tokenizer.vocab_size from config")
     ap.add_argument("--min-freq", type=int, default=2)
-    ap.add_argument("--max-lines", type=int, default=0, help="stop after N lines (0 = all)")
+    ap.add_argument("--max-lines", type=int, default=0,
+                    help="sample about N lines spread over all files (0 = read everything)")
     a = ap.parse_args()
 
     from configs.loader import get_config
@@ -49,19 +51,28 @@ def main() -> int:
     print(f"vocab  : {vocab_size}")
 
     t0, n_lines, n_bytes, freq = time.time(), 0, 0, Counter()
+    # With --max-lines the sample is spread over ALL files (a quota per file, read from a
+    # deterministic spot inside big files) so it is not just the first books/pages of the corpus.
+    quota = max(1, -(-a.max_lines // len(files))) if a.max_lines else 0
+    files_used = 0
     for f in files:
-        with f.open("r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                line = line.strip()
+        got = 0
+        with f.open("rb") as fh:
+            if quota and f.stat().st_size > 1_000_000:
+                fh.seek(int(f.stat().st_size * (zlib.crc32(f.name.encode()) % 90) / 100))
+                fh.readline()                        # drop the partial line we landed in
+            for raw in fh:
+                line = raw.decode("utf-8", errors="replace").replace("\ufeff", "").strip()
                 if not line:
                     continue
                 freq.update(pre_split(line))
                 n_lines += 1
+                got += 1
                 n_bytes += len(line.encode("utf-8"))
-                if a.max_lines and n_lines >= a.max_lines:
+                if quota and got >= quota:
                     break
-        if a.max_lines and n_lines >= a.max_lines:
-            break
+        files_used += bool(got)
+    print(f"files  : {files_used} of {len(files)} contributed text")
     print(f"read   : {n_lines} lines, {n_bytes/1e6:.1f} MB, {len(freq)} unique words  ({time.time()-t0:.0f}s)")
 
     t1 = time.time()
@@ -71,13 +82,14 @@ def main() -> int:
 
     # Report: round trip + compression on a sample of the corpus.
     sample, total_tok, total_b, bad = [], 0, 0, 0
-    with files[0].open("r", encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            line = line.strip()
-            if line:
-                sample.append(line)
-            if len(sample) >= 2000:
-                break
+    for f in files[:: max(1, len(files) // 200)]:          # check text from ~200 different files
+        with f.open("r", encoding="utf-8", errors="replace") as fh:
+            for i, line in enumerate(fh):
+                line = line.replace("\ufeff", "").strip()
+                if line and i >= 3:
+                    sample.append(line)
+                if i >= 12:
+                    break
     for s in sample:
         ids = tok.encode(s, add_special_tokens=False, truncation=False)
         total_tok += len(ids)
