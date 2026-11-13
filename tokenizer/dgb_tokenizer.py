@@ -71,8 +71,11 @@ class DGBTokenizer:
 
     @classmethod
     def from_pretrained(cls, save_dir: Path) -> "DGBTokenizer":
-        tok      = cls()
         save_dir = Path(save_dir)
+        if (save_dir / "byte_bpe.json").exists():      # batch3: byte-level tokenizer
+            from tokenizer.byte_bpe import ByteBPETokenizer
+            return ByteBPETokenizer.from_pretrained(save_dir)
+        tok      = cls()
         vocab_candidates  = sorted(save_dir.glob("*vocabulary.json"))
         merges_candidates = sorted(save_dir.glob("*bpe_merges.json"))
         if not vocab_candidates:
