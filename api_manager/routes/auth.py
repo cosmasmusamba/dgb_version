@@ -46,7 +46,7 @@ async def login(form: OAuth2PasswordRequestForm = Depends()):
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    logger.info("User logged in: %s  role=%s", user["sub"], user["role"])
+    logger.info("User logged in: %s  role=%s", user["sub"], getattr(user["role"], "value", user["role"]))
     return create_token_pair(sub=user["sub"], role=user["role"])
 
 
