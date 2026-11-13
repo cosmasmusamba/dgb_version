@@ -3,6 +3,7 @@ export type UserRole = "admin" | "user" | "readonly";
 export interface User {
   sub: string;
   role: UserRole;
+  isGuest?: boolean;
 }
 
 export interface TokenPair {

@@ -11,6 +11,7 @@ interface ChatWorkspaceProps {
   theme: Theme;
   onToggleTheme: () => void;
   onOpenAdmin: () => void;
+  onOpenLogin: () => void;
   onLogout: () => void;
 }
 
@@ -45,6 +46,7 @@ export default function ChatWorkspace({
   theme,
   onToggleTheme,
   onOpenAdmin,
+  onOpenLogin,
   onLogout
 }: ChatWorkspaceProps) {
   const [threads, setThreads] = useState<ChatThread[]>(() => userStorage.threads(user.sub));
@@ -196,7 +198,9 @@ export default function ChatWorkspace({
       });
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) {
-        const message = reason instanceof ApiError ? reason.message : "The model could not finish this response.";
+        const message = user.isGuest && reason instanceof ApiError && reason.status === 401
+          ? "Guest chat is not enabled by the service yet. You can still explore the workspace, or sign in."
+          : reason instanceof ApiError ? reason.message : "The model could not finish this response.";
         updateThread(thread.id, (current) => ({
           ...current,
           messages: current.messages.map((item) => item.id === assistantMessage.id
@@ -267,12 +271,14 @@ export default function ChatWorkspace({
           <button className="nav-item" onClick={onToggleTheme}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /> Switch to {theme === "light" ? "dark" : "light"} theme</button>
           {user.role === "admin" && <button className="nav-item admin-entry" onClick={onOpenAdmin}><Icon name="admin" size={17} /> Administration <Icon name="arrow" size={14} /></button>}
           <div className="account-row">
-            <span className="avatar">{user.sub.slice(0, 1).toUpperCase()}</span>
-            <span className="account-copy"><strong>{user.sub}</strong><small>{user.role} account</small></span>
-            <div className="account-menu-wrap">
-              <button className="icon-button" aria-label="Account options" onClick={() => setMenuOpen((open) => !open)}><Icon name="more" /></button>
-              {menuOpen && <div className="floating-menu"><button onClick={() => { clearSession(); onLogout(); }}>Sign out</button></div>}
-            </div>
+            <span className="avatar">{user.isGuest ? "G" : user.sub.slice(0, 1).toUpperCase()}</span>
+            <span className="account-copy"><strong>{user.isGuest ? "Guest workspace" : user.sub}</strong><small>{user.isGuest ? "Saved on this device" : `${user.role} account`}</small></span>
+            {user.isGuest
+              ? <button className="button button-small button-outline guest-signin" onClick={onOpenLogin}>Sign in</button>
+              : <div className="account-menu-wrap">
+                <button className="icon-button" aria-label="Account options" onClick={() => setMenuOpen((open) => !open)}><Icon name="more" /></button>
+                {menuOpen && <div className="floating-menu"><button onClick={() => { clearSession(); onLogout(); }}>Sign out</button></div>}
+              </div>}
           </div>
         </div>
       </aside>

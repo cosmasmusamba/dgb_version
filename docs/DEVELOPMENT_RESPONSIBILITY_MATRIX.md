@@ -46,6 +46,8 @@ The frontend integration check found:
 
 **Owner: Claude.** Investigate and resolve the backend role serialization/authorization inconsistency, preserving server-side authorization. Do not ask the frontend to normalize the role or bypass the protected route. After a backend fix, jointly verify the returned identity and protected admin endpoints using an authenticated administrator session.
 
+Claude reports a fix on `backend/fix-admin-role-claim`. Copilot ran the new role regression suite in the current backend worktree: 15 tests passed, including login, `/auth/me`, and `/v1/admin/health`. The backend changes have not been committed or merged into the frontend branch; verify again during coordinated integration.
+
 ### Additional backend capabilities needed by the UI
 
 The current frontend documents or handles these as unavailable rather than pretending they are live. Claude owns backend/API design and implementation; Copilot owns wiring the agreed contracts into the UI after coordination:
@@ -57,6 +59,8 @@ The current frontend documents or handles these as unavailable rather than prete
 - Dataset inventory and source-level status.
 - Model deploy/rollback that actually activates a checkpoint and reports the active model; current acknowledgements indicate the action is queued.
 - Clear training-launch semantics: apply submitted settings or report the effective settings and explain any ignored values.
+- Define a guest inference contract for unauthenticated chat, including abuse controls, rate limits, privacy, retention, and error semantics.
+- Define secure Google and GitHub OAuth contracts, provider configuration, account linking/provisioning, role assignment, session issuance, and failure behavior before the frontend enables social sign-in.
 
 Endpoint additions must remain protected by server-side authorization and be documented and tested by the backend owner.
 

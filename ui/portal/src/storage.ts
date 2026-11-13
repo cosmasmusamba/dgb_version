@@ -1,5 +1,7 @@
 import type { ChatThread, Project } from "./types";
 
+const GUEST_ID_KEY = "dgb.guestId";
+
 function dataKey(userId: string, key: string): string {
   return `dgb:${encodeURIComponent(userId)}:${key}`;
 }
@@ -15,6 +17,15 @@ function read<T>(userId: string, key: string, fallback: T): T {
 
 function write<T>(userId: string, key: string, value: T): void {
   localStorage.setItem(dataKey(userId, key), JSON.stringify(value));
+}
+
+export function guestUser() {
+  let guestId = localStorage.getItem(GUEST_ID_KEY);
+  if (!guestId) {
+    guestId = crypto.randomUUID();
+    localStorage.setItem(GUEST_ID_KEY, guestId);
+  }
+  return { sub: `guest-${guestId.slice(0, 8)}`, role: "user" as const, isGuest: true };
 }
 
 export const userStorage = {

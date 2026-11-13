@@ -3,6 +3,7 @@ import { clearSession, currentUser, getMe, isPreviewSession, updateUser } from "
 import AdminWorkspace from "./components/AdminWorkspace";
 import ChatWorkspace from "./components/ChatWorkspace";
 import Login from "./components/Login";
+import { guestUser } from "./storage";
 import type { User } from "./types";
 
 type Theme = "light" | "dark";
@@ -14,14 +15,15 @@ function initialTheme(): Theme {
 }
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(() => currentUser());
+  const [user, setUser] = useState<User>(() => currentUser() ?? guestUser());
   const [checking, setChecking] = useState(() => Boolean(currentUser()));
+  const [loginOpen, setLoginOpen] = useState(false);
   const [workspace, setWorkspace] = useState<"chat" | "admin">("chat");
   const [theme, setTheme] = useState<Theme>(initialTheme);
 
   useEffect(() => {
     let active = true;
-    if (user && !isPreviewSession()) {
+    if (!user.isGuest && !isPreviewSession()) {
       void getMe().then((freshUser) => {
         if (!active) return;
         updateUser(freshUser);
@@ -29,7 +31,7 @@ export default function App() {
       }).catch(() => {
         if (!active) return;
         clearSession();
-        setUser(null);
+        setUser(guestUser());
       }).finally(() => {
         if (active) setChecking(false);
       });
@@ -46,13 +48,21 @@ export default function App() {
 
   function logout() {
     clearSession();
-    setUser(null);
+    setUser(guestUser());
+    setLoginOpen(false);
     setWorkspace("chat");
   }
 
   function handleLogin(nextUser: User) {
     setUser(nextUser);
+    setLoginOpen(false);
     if (isPreviewSession() && nextUser.role === "admin") setWorkspace("admin");
+  }
+
+  function continueAsGuest() {
+    setUser(guestUser());
+    setLoginOpen(false);
+    setWorkspace("chat");
   }
 
   function enterAdmin() {
@@ -62,7 +72,7 @@ export default function App() {
   if (checking) {
     return <main className="session-loading"><span className="loading-spinner" /><p>Checking your DGB session…</p></main>;
   }
-  if (!user) return <Login onLogin={handleLogin} />;
+  if (loginOpen && user.isGuest) return <Login onLogin={handleLogin} onContinueAsGuest={continueAsGuest} />;
   if (workspace === "admin" && user.role === "admin") {
     return <AdminWorkspace
       user={user}
@@ -77,6 +87,7 @@ export default function App() {
     theme={theme}
     onToggleTheme={() => setTheme((value) => value === "light" ? "dark" : "light")}
     onOpenAdmin={enterAdmin}
+    onOpenLogin={() => setLoginOpen(true)}
     onLogout={logout}
   />;
 }

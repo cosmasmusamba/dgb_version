@@ -100,6 +100,7 @@ button:disabled { cursor: not-allowed !important; opacity: .52; }
 .account-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; flex: 1; }
 .account-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
 .account-copy small { color: var(--muted); font-size: 10px; text-transform: capitalize; }
+.guest-signin { flex: 0 0 auto; padding: 0 8px; }
 .account-menu-wrap { position: relative; }
 .floating-menu { position: absolute; bottom: 34px; right: 0; width: 130px; padding: 5px; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow); z-index: 5; }
 .floating-menu button { width: 100%; border: 0; border-radius: 6px; background: transparent; text-align: left; padding: 8px 9px; cursor: pointer; }
@@ -226,10 +227,17 @@ button:disabled { cursor: not-allowed !important; opacity: .52; }
 .login-heading .eyebrow { color: var(--accent); }
 .login-heading h1 { margin: 14px 0 7px; font-family: var(--serif); font-size: 38px; font-weight: 400; letter-spacing: -.035em; }
 .login-heading p, .login-note { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.social-login { display: grid; gap: 8px; margin-top: 20px; }
+.social-login .button { position: relative; justify-content: center; min-height: 40px; }
+.social-login .button span { position: absolute; right: 10px; color: var(--muted); font-size: 9px; font-weight: 500; }
+.social-login > p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; text-align: center; }
+.login-divider { display: flex; align-items: center; gap: 10px; margin-top: 20px; color: var(--muted); font-size: 9px; }
+.login-divider::before, .login-divider::after { content: ""; height: 1px; flex: 1; background: var(--line); }
 .login-form { display: flex; flex-direction: column; gap: 16px; margin-top: 26px; }
 .login-form input { height: 43px; }
 .login-submit { width: 100%; min-height: 42px; margin-top: 4px; font-size: 12px; }
 .login-submit svg { margin-left: auto; }
+.guest-continue { width: 100%; justify-content: center; margin-top: 10px; }
 .login-note { padding-top: 17px; margin: 19px 0 0; border-top: 1px solid var(--line); font-size: 10px; }
 .preview-login { padding-top: 17px; margin-top: 17px; border-top: 1px solid var(--line); }
 .preview-divider { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: .07em; text-align: center; text-transform: uppercase; }
