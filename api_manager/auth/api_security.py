@@ -62,6 +62,26 @@ def _secret() -> str:
     return key
 
 
+def normalize_role(role) -> str:
+    """
+    Canonical role string: "admin" | "user" | "readonly". Fails closed on anything else.
+
+    str(UserRole.ADMIN) is 'UserRole.ADMIN' (UserRole is a str-Enum), which is what login used to put
+    in the token; the admin check then compared 'UserRole.ADMIN' with 'admin' and always said 403.
+    Tokens already issued with that text are read as the role they name (no escalation: 'UserRole.USER'
+    stays user). Anything unknown raises AuthError, i.e. a 401.
+    """
+    if isinstance(role, UserRole):
+        return role.value
+    text = str(role)
+    try:
+        if text.startswith("UserRole."):
+            return UserRole[text[len("UserRole."):]].value
+        return UserRole(text).value
+    except (KeyError, ValueError):
+        raise AuthError(f"Unknown role in token: {text!r}")
+
+
 class TokenData(BaseModel):
     sub:  str
     role: str = UserRole.USER
@@ -97,7 +117,7 @@ def _make_token(
     # Build a clean dict – no extra keys
     payload = {
         "sub": str(sub),
-        "role": str(role),
+        "role": normalize_role(role),
         "type": str(type),
         "exp": int(exp.timestamp())   # integer, not float
     }
@@ -119,7 +139,7 @@ def decode_token(token: str) -> TokenData:
         payload = jwt.decode(token, _secret(), algorithms=[JWT_ALGORITHM])
         data = TokenData(
             sub=payload["sub"],
-            role=payload.get("role", UserRole.USER),
+            role=normalize_role(payload.get("role", UserRole.USER)),
             type=payload.get("type", "access"),
             exp=payload.get("exp"),
         )
