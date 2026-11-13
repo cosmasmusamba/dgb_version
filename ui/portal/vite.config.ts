@@ -5,6 +5,7 @@ export default defineConfig({
   base: "./",
   plugins: [react()],
   server: {
+    allowedHosts: [".trycloudflare.com"],
     proxy: {
       "/auth": "http://127.0.0.1:8000",
       "/health": "http://127.0.0.1:8000",

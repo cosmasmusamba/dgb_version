@@ -32,7 +32,7 @@ Ownership applies to implementation and maintenance, not just initial delivery. 
 1. For work that crosses ownership boundaries, send a concise handover before implementation: context, owner, exact files or endpoints affected, proposed contract, acceptance criteria, tests, and known risks.
 2. The receiving agent acknowledges the handover and raises questions or conflicts before changing the shared interface. Do not assume an agent has seen or accepted a message that the project owner has not delivered.
 3. During implementation, report contract deviations and newly discovered blockers promptly. Keep changes within the assigned ownership boundary unless the project owner explicitly authorizes an exception.
-4. At handover, provide changed files, branch and commit status, verification performed, unresolved issues, and steps needed by the other owner. Do not commit, push, merge, or deploy without project-owner approval.
+4. At handover, provide changed files, branch and commit status, verification performed, unresolved issues, and steps needed by the other owner. Keep work on the owner's feature branch until integration is explicitly approved.
 
 ## Current blockers and integration dependencies
 
@@ -65,7 +65,9 @@ Endpoint additions must remain protected by server-side authorization and be doc
 - Frontend work remains isolated on `feature/dgb-ui-workspaces`.
 - Claude performs backend work on a separate backend feature branch, not on the frontend branch.
 - Neither agent modifies the T0.1 test branch.
-- No commits, pushes, merges, or deployments without the project owner's explicit approval.
+- Each owner may commit and push their own work to their isolated feature branch so the other owner can review the latest changes. Do not commit or push another owner's work.
+- Do not merge feature branches into shared branches until both backend and frontend work is complete, integration dependencies and blockers are documented, and the project owner approves the merge.
+- Deployment remains subject to explicit project-owner approval.
 - Preserve rollback capability: keep branch boundaries, avoid overwriting unrelated work, and identify a known-good checkpoint or commit before integrating coordinated changes.
 - Keep generated files, local data, credentials, and unrelated worktree changes out of a task's changes. Do not revert or delete another contributor's work.
 
@@ -77,4 +79,4 @@ Endpoint additions must remain protected by server-side authorization and be doc
 | Frontend type-check/build, component behavior, responsive and accessibility checks, browser navigation/forms/dialogs, client state, API integration behavior, fixture exclusion from production bundle | Copilot |
 | Cross-boundary contract verification, authenticated administrator flow, coordinated regression checks, release readiness and rollback decision | Claude and Copilot coordinate; project owner approves |
 
-Each owner reports the exact checks run and their results. Do not treat frontend fixtures as evidence that backend authorization or API integration works. A release or merge requires owner approval and successful checks appropriate to both affected layers; neither agent independently deploys or merges.
+Each owner reports the exact checks run and their results. Do not treat frontend fixtures as evidence that backend authorization or API integration works. A merge requires owner approval, documented handover, and successful checks appropriate to both affected layers. Neither agent independently merges or deploys.
