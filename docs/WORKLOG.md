@@ -78,7 +78,7 @@ GitHub to review. Paste REAL command output, not summaries.
   `/auth/me` role `admin`, `/v1/admin/health` 200 for admin, 403 for a user, 401 for a guest; frontend compares `"admin"` exactly.
 
 ### Database foundation (2026-11-15) [Claude patch; Copilot local verification]
-- Branch / commit: `backend/db-foundation` @ (recorded in follow-up documentation commit)
+- Branch / commit: `backend/db-foundation` @ `a89fb217de96018f3d29624138bbc29dc63251f9`
 - Status: DONE — implementation and local verification complete; owner review/merge pending
 - What changed: `database/` package (SQLAlchemy 2 + Alembic migrations, SQLite fallback, PostgreSQL (Docker, `docker-compose.db.yml`, host port 5434) via `DGB_DATABASE_URL`);
   `users` and `audit_log` tables; accounts replace the in-memory user store; login, refresh and every protected request read
