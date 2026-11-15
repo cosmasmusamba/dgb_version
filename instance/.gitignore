@@ -1,0 +1,3 @@
+# Runtime data (SQLite database with account records and password hashes). Never commit.
+*
+!.gitignore

@@ -1,6 +1,7 @@
-# DGB AI — ROADMAP (planner: Claude · implementer: Copilot · owner/runner: Xosmas)
+# DGB AI — ROADMAP (project lead and backend owner: Claude · frontend owner: Copilot · approver/runner: Xosmas)
 
-Last updated 2026-11-11: T0.1-T0.3 merged to main (`9c253ac`); batch3 ships T1.1 (byte-level tokenizer) + T0.4 (eval script).
+Last updated 2026-11-13: `main` = `ab1b67a` (T0.1-T0.3, T1.1 tokenizer + eval tools, admin role fix). Branch `backend/db-foundation`
+adds the database layer. Ownership split: `docs/DEVELOPMENT_RESPONSIBILITY_MATRIX.md`. Backend contracts: `docs/API_CONTRACTS.md`.
 
 **Status board**
 - T0.1 leak proof ........ DONE (Copilot run: loss 1.647 -> 0.024 on random tokens in 300 steps;
@@ -63,17 +64,19 @@ small LM (tens to low hundreds of millions of parameters). Goal: coherent text, 
 perplexity, then narrow fine-tuned skills. It will not match frontier models; do not
 claim it does. Every phase ends with numbers in `docs/WORKLOG.md`.
 
-## 1. Working agreement
-- Claude plans and ships each task as a patch zip (`dgb_batchN.zip`): extract in the project
-  root, run `patch_batchN.py --dry-run` (checks the environment, writes nothing), then apply,
-  then run the verify commands printed by the script. Overwritten files are backed up.
-- Copilot is optional: use it for follow-up edits inside the repo. If used, ONE task per
-  session on a branch `task/<id>-<name>`, and it logs to `docs/WORKLOG.md`.
-- Xosmas commits, runs cloud jobs and pastes outputs. Claude reads the pushed code on GitHub
-  (repo is public, read-only) and reviews real diffs, then ships the next batch.
+## 1. Working agreement (since 2026-11-13)
+- **Claude** leads the project and owns the backend: database, authentication/authorization, APIs, model and
+  inference, tokenizer, training and data pipelines, backend security and tests, API documentation. Claude decides
+  priorities and merge order, and ships work as patch zips (`dgb_<name>.zip`: extract in the project root, run
+  `patch_<name>.py --dry-run`, then apply, then the verify commands the script prints).
+- **Copilot** owns the frontend (`ui/portal/`, branch `feature/dgb-ui-workspaces`) and reports back with commit hashes
+  and real command output. It does not change backend files or API contracts.
+- **Xosmas** commits and pushes (Claude has no GitHub write access), runs cloud jobs, pastes outputs, and approves
+  deployments. Merges happen in the order Claude gives, after the checks listed for that branch pass.
+- Contract changes (routes, payloads, auth behaviour, errors) are written in `docs/API_CONTRACTS.md` and confirmed by
+  Copilot before the backend change is merged.
+- Branches: one per task, `backend/<name>` or `task/<id>-<name>`. Never modify another owner's branch.
 - Local runs: tiny configs only (CPU, no GPU, ~3 GB RAM free). Real training: cloud GPU.
-
----
 
 ## PHASE 0 — Make training honest (local, CPU, tiny configs)
 
@@ -150,3 +153,21 @@ DB-backed users and revocable refresh tokens (current store is in-memory with on
 rate limiter: trusted-proxy handling for `X-Forwarded-For`/`CF-Connecting-IP`, atomic Redis check,
 explicit fail-open/closed policy; reject placeholder secrets from `.env.example` at startup;
 Dockerfile, cloud deployment, streaming OpenAI-compatible API, UI portal.
+
+## Web platform track (backend work for the portal)
+
+| # | Work | Branch | State |
+|---|---|---|---|
+| 1 | Role claim fix | `backend/fix-admin-role-claim` | MERGED (`208f4bf`); verified with Copilot: admin 200, user 403, guest 401 |
+| 2 | Byte-level tokenizer + eval tools | `task/T1.1-byte-tokenizer` | MERGED (`ab1b67a`) |
+| 3 | Database foundation: users, audit log, migrations, accounts in login/refresh/token checks, `tools/manage_users.py` | `backend/db-foundation` | IN REVIEW (this branch) |
+| 4 | Admin: user list, role change, disable/enable, invitations; audit-log read API | `backend/admin-users` | NEXT |
+| 5 | API keys and usage reporting | `backend/api-keys` | planned |
+| 6 | Guest chat (disabled by default; see contracts section 1) | `backend/guest-chat` | planned; waits for a model worth showing |
+| 7 | Google / GitHub sign-in (contracts section 2) | `backend/oauth` | planned |
+| 8 | Model registry, real deploy/rollback, training-launch honesty | `backend/model-registry` | planned |
+| 9 | Dataset inventory and per-source status | `backend/dataset-status` | planned |
+
+Security follow-ups found in review: refresh tokens are not rotated or revocable yet (needs a token table; planned
+with item 4); login has no per-account lockout (rate limiting arrives with item 6); passwords from the environment
+bootstrap are only warned about, not enforced, when short.

@@ -24,6 +24,7 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from configs.constants import (
@@ -165,7 +166,11 @@ async def get_current_user(
             raise AuthError("Token is not an access token")
         if data.exp and data.exp < time.time():
             raise AuthError("Token has expired")
-        return data
+        account = await run_in_threadpool(load_account, data.sub)
+        if account is None or not account["is_active"]:
+            raise AuthError("Account is not available")
+        # The database is the source of truth for identity and role; the token only proves who it was issued to.
+        return TokenData(sub=account["username"], role=normalize_role(account["role"]), type="access", exp=data.exp)
     except AuthError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -208,15 +213,65 @@ def _bootstrap_users() -> dict:
     return users
 
 
-# Keep the in-memory store empty by default unless bootstrap creds are supplied
-_USERS: dict = _bootstrap_users()
+# Users live in the database (database/users.py); the old in-memory store was removed.
+
+
+_DUMMY_HASH: Optional[str] = None
+
+
+def load_account(username: str) -> Optional[dict]:
+    """Current account record (role, active flag) from the database, or None. Blocking: call via a thread pool."""
+    from database import get_session
+    from database import users as repo
+    with get_session() as s:
+        return repo.find_account(s, username)
+
+
+def seed_bootstrap_admin() -> bool:
+    """
+    Create the bootstrap administrator from DGB_BOOTSTRAP_ADMIN_USERNAME / _PASSWORD if that account does
+    not exist yet. An existing account is never modified (a changed environment password does not reset it;
+    use tools/manage_users.py set-password). Returns True when an account was created.
+    """
+    username = os.environ.get("DGB_BOOTSTRAP_ADMIN_USERNAME", "").strip()
+    password = os.environ.get("DGB_BOOTSTRAP_ADMIN_PASSWORD", "").strip()
+    if not username and not password:
+        return False
+    if not username or not password:
+        raise RuntimeError(
+            "DGB_BOOTSTRAP_ADMIN_USERNAME and DGB_BOOTSTRAP_ADMIN_PASSWORD must be set together. "
+            "Partial bootstrap admin configuration is not allowed."
+        )
+    from database import get_session, audit
+    from database import users as repo
+    with get_session() as s:
+        if repo.get_user(s, username) is not None:
+            return False
+        if len(password) < repo.MIN_PASSWORD_LEN:
+            logger.warning("Bootstrap admin password is shorter than %d characters; change it with tools/manage_users.py set-password",
+                           repo.MIN_PASSWORD_LEN)
+        user = repo.create_user(s, username, hash_password(password), UserRole.ADMIN.value)
+        audit.record(s, "bootstrap_admin_created", actor="bootstrap", target=user.username)
+    logger.info("Bootstrap administrator '%s' created", username)
+    return True
 
 
 def authenticate_user(username: str, password: str) -> Optional[dict]:
+    """Check a username/password against the database. Returns {"sub", "role"} or None."""
+    global _DUMMY_HASH
     _require_jwt_backend()
-    user = _USERS.get(username)
-    if not user:
-        return None
-    if not verify_password(password, user["hashed_password"]):
-        return None
-    return {"sub": username, "role": user["role"]}
+    from database import get_session
+    from database import users as repo
+    with get_session() as s:
+        account = repo.find_account(s, username)
+        usable = account is not None and account["is_active"] and bool(account["password_hash"])
+        if not usable:
+            # Spend the same time as a real check so response time does not reveal whether the account exists.
+            if _DUMMY_HASH is None:
+                _DUMMY_HASH = hash_password("dgb-timing-pad-value")
+            verify_password(password, _DUMMY_HASH)
+            return None
+        if not verify_password(password, account["password_hash"]):
+            return None
+        repo.record_login(s, account["id"])
+        return {"sub": account["username"], "role": account["role"]}

@@ -1,0 +1,29 @@
+# DGB AI database (PostgreSQL) for local development.
+#   docker compose -f docker-compose.db.yml up -d
+# Needs DGB_POSTGRES_PASSWORD (put it in a git-ignored .env file next to this file, or set it in the shell).
+# Use letters and digits only, so the password can sit in a URL without escaping.
+# Host port 5434 is used because 5432/5433 are commonly taken by other projects' databases.
+name: dgb
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: dgb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dgb
+      POSTGRES_PASSWORD: ${DGB_POSTGRES_PASSWORD:?Set DGB_POSTGRES_PASSWORD (letters and digits) before starting}
+      POSTGRES_DB: dgb
+    ports:
+      - "127.0.0.1:5434:5432"        # loopback only: not reachable from other machines
+    volumes:
+      - dgb_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dgb -d dgb"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  dgb_pgdata:

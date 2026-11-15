@@ -72,6 +72,14 @@ def create_app() -> FastAPI:
     except RuntimeError as exc:
         raise RuntimeError(f"Authentication is not configured: {exc}") from exc
 
+    from api_manager.auth.api_security import seed_bootstrap_admin
+    from database import init_database
+    init_database()                 # create/upgrade the schema (Alembic migrations)
+    try:
+        seed_bootstrap_admin()
+    except RuntimeError as exc:
+        raise RuntimeError(f"Authentication is not configured: {exc}") from exc
+
     if os.getenv("DGB_REQUIRE_MODEL_ON_STARTUP", "0").lower() in {"1", "true", "yes"}:
         try:
             from modules.utils.path_resolver import init_path_resolver
