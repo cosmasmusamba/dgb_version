@@ -19,6 +19,24 @@ created and upgraded automatically the first time the API or `tools/manage_users
 The server only listens on 127.0.0.1. `docker compose -f docker-compose.db.yml down` stops it and keeps the data;
 add `-v` only if you want to delete the data.
 
+## Production requirements
+
+- Set `DGB_DATABASE_URL` through the deployment platform's secret manager. Do not copy the development `.env` or
+  commit database credentials. Use a dedicated database role with only the permissions DGB needs.
+- Use a supported PostgreSQL service on a private network, restrict inbound database access to the API service,
+  and require TLS for connections when supported by the provider.
+- Run Alembic schema upgrades in a controlled release step and verify the resulting revision before serving traffic.
+  This version also upgrades the schema during API startup; serialize migrations during deployment so multiple
+  workers or replicas do not attempt concurrent upgrades.
+- Configure automated backups and point-in-time recovery where available, restrict backup access, and test a restore
+  before relying on the database for production accounts and audit records.
+- Supply `DGB_SECRET_KEY` and the initial `DGB_BOOTSTRAP_ADMIN_USERNAME` / `DGB_BOOTSTRAP_ADMIN_PASSWORD` through
+  secret management. Bootstrap only creates the account if it is absent; changing those variables does not reset its
+  password. Use the account-management tool to rotate credentials after bootstrap.
+- Verify connectivity, migrations, login, role checks, audit writes, backup/restore procedures, and the deployed
+  commit against the production environment before calling the release ready. Never point the destructive
+  `DGB_TEST_DATABASE_URL` test suite at a production database.
+
 ## Tests
 `python -m pytest tests\unit -q` uses a throw-away SQLite file per test. To run the same tests on PostgreSQL:
 `$env:DGB_TEST_DATABASE_URL = "postgresql+psycopg://dgb:<password>@127.0.0.1:5434/dgb_test"`. That database is wiped

@@ -125,4 +125,4 @@ GitHub to review. Paste REAL command output, not summaries.
   - Full unit suite runs against isolated PostgreSQL `dgb_test`: met; 102 passed, 1 expected xfail.
   - Fresh PostgreSQL `dgb` DB starts empty, seeds the bootstrap admin on API startup, accepts login, returns canonical admin role and allows admin health: met.
   - Bootstrap and successful-login audit events are present: met.
-- Open: refresh-token rotation/revocation; admin HTTP endpoints for users and audit (next branch). Production PostgreSQL deployment still needs its own environment/secrets and migration verification.
+- Open: refresh-token rotation/revocation; admin HTTP endpoints for users and audit (next branch). Production still needs provider-managed credentials, private/TLS database connectivity, controlled serialized migrations, and tested backup/restore; see `docs/DATABASE.md`.
